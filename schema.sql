@@ -30,7 +30,7 @@ CREATE TABLE reservations (
     seat_id INTEGER NOT NULL REFERENCES seats(id),
     confirmed_at INTEGER NOT NULL DEFAULT (unixepoch())
         CHECK (typeof(confirmed_at) = 'integer'),
-    -- Starts now by default; triggers reject future starts on INSERT/UPDATE.
+    -- New/changed starts must equal the database current Unix second.
     starts_at INTEGER NOT NULL DEFAULT (unixepoch())
         CHECK (typeof(starts_at) = 'integer'),
     def_time INTEGER NOT NULL DEFAULT 21600
@@ -48,8 +48,8 @@ CREATE INDEX reservations_seat_time ON reservations(seat_id, starts_at, ends_at)
 -- BEGIN/COMMIT on the server plus these triggers protect concurrent inserts.
 CREATE TRIGGER reservations_validate_insert BEFORE INSERT ON reservations
 BEGIN
-    SELECT RAISE(ABORT, 'future reservation is not allowed')
-        WHERE NEW.starts_at > unixepoch();
+    SELECT RAISE(ABORT, 'reservation must start at current time')
+        WHERE NEW.starts_at <> unixepoch();
     SELECT RAISE(ABORT, 'new reservation must be ACTIVE') WHERE NEW.status <> 'ACTIVE';
     SELECT RAISE(ABORT, 'reservation overlaps') WHERE EXISTS (
         SELECT 1 FROM reservations r
@@ -61,8 +61,9 @@ END;
 CREATE TRIGGER reservations_validate_update
 BEFORE UPDATE OF seat_id, starts_at, def_time, status, confirmed_at ON reservations
 BEGIN
-    SELECT RAISE(ABORT, 'future reservation is not allowed')
-        WHERE NEW.starts_at > unixepoch();
+    -- Existing starts become past naturally; only validate a changed start.
+    SELECT RAISE(ABORT, 'reservation must start at current time')
+        WHERE NEW.starts_at <> OLD.starts_at AND NEW.starts_at <> unixepoch();
     SELECT RAISE(ABORT, 'terminal reservation cannot be changed')
         WHERE OLD.status IN ('ENDED', 'CANCELLED');
     SELECT RAISE(ABORT, 'confirmed_at is immutable')
