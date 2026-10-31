@@ -30,19 +30,19 @@ CREATE TABLE reservations (
     seat_id INTEGER NOT NULL REFERENCES seats(id),
     confirmed_at INTEGER NOT NULL DEFAULT (unixepoch())
         CHECK (typeof(confirmed_at) = 'integer'),
-    -- New/changed starts must equal the database current Unix second.
+    -- Starts at the database current Unix second; immutable after insertion.
     starts_at INTEGER NOT NULL DEFAULT (unixepoch())
         CHECK (typeof(starts_at) = 'integer'),
     def_time INTEGER NOT NULL DEFAULT 21600
         CHECK (typeof(def_time) = 'integer' AND def_time > 0),
     ends_at INTEGER GENERATED ALWAYS AS (starts_at + def_time) STORED,
-    status TEXT NOT NULL DEFAULT 'ACTIVE'
-        CHECK (status IN ('ACTIVE', 'ENDED', 'CANCELLED')),
+    status TEXT NOT NULL DEFAULT 'CONFIRMED'
+        CHECK (status IN ('CONFIRMED', 'ENDED', 'CANCELLED')),
     status_changed_at INTEGER NOT NULL DEFAULT (unixepoch()),
     CHECK (typeof(ends_at) = 'integer' AND starts_at < ends_at)
 );
 CREATE INDEX reservations_seat_time ON reservations(seat_id, starts_at, ends_at)
-    WHERE status = 'ACTIVE';
+    WHERE status = 'CONFIRMED';
 
 -- [starts_at, ends_at): adjacent reservations are allowed.
 -- BEGIN/COMMIT on the server plus these triggers protect concurrent inserts.
@@ -50,10 +50,10 @@ CREATE TRIGGER reservations_validate_insert BEFORE INSERT ON reservations
 BEGIN
     SELECT RAISE(ABORT, 'reservation must start at current time')
         WHERE NEW.starts_at <> unixepoch();
-    SELECT RAISE(ABORT, 'new reservation must be ACTIVE') WHERE NEW.status <> 'ACTIVE';
+    SELECT RAISE(ABORT, 'new reservation must be CONFIRMED') WHERE NEW.status <> 'CONFIRMED';
     SELECT RAISE(ABORT, 'reservation overlaps') WHERE EXISTS (
         SELECT 1 FROM reservations r
-        WHERE r.seat_id = NEW.seat_id AND r.status = 'ACTIVE'
+        WHERE r.seat_id = NEW.seat_id AND r.status = 'CONFIRMED'
           AND r.starts_at < NEW.starts_at + NEW.def_time AND NEW.starts_at < r.ends_at
     );
 END;
@@ -61,23 +61,23 @@ END;
 CREATE TRIGGER reservations_validate_update
 BEFORE UPDATE OF seat_id, starts_at, def_time, status, confirmed_at ON reservations
 BEGIN
-    -- Existing starts become past naturally; only validate a changed start.
-    SELECT RAISE(ABORT, 'reservation must start at current time')
-        WHERE NEW.starts_at <> OLD.starts_at AND NEW.starts_at <> unixepoch();
+    -- Preserve the original start even when changing it to the current time.
+    SELECT RAISE(ABORT, 'starts_at is immutable')
+        WHERE NEW.starts_at IS NOT OLD.starts_at;
     SELECT RAISE(ABORT, 'terminal reservation cannot be changed')
         WHERE OLD.status IN ('ENDED', 'CANCELLED');
     SELECT RAISE(ABORT, 'confirmed_at is immutable')
         WHERE NEW.confirmed_at <> OLD.confirmed_at;
     SELECT RAISE(ABORT, 'cannot change booking while ending or cancelling')
-        WHERE NEW.status <> 'ACTIVE' AND
+        WHERE NEW.status <> 'CONFIRMED' AND
             (NEW.seat_id <> OLD.seat_id OR NEW.starts_at <> OLD.starts_at OR NEW.def_time <> OLD.def_time);
     SELECT RAISE(ABORT, 'reservation already expired')
         WHERE OLD.ends_at <= unixepoch();
     SELECT RAISE(ABORT, 'future reservation can only be cancelled')
         WHERE NEW.status = 'ENDED' AND OLD.starts_at > unixepoch();
-    SELECT RAISE(ABORT, 'reservation overlaps') WHERE NEW.status = 'ACTIVE' AND EXISTS (
+    SELECT RAISE(ABORT, 'reservation overlaps') WHERE NEW.status = 'CONFIRMED' AND EXISTS (
         SELECT 1 FROM reservations r
-        WHERE r.id <> NEW.id AND r.seat_id = NEW.seat_id AND r.status = 'ACTIVE'
+        WHERE r.id <> NEW.id AND r.seat_id = NEW.seat_id AND r.status = 'CONFIRMED'
           AND r.starts_at < NEW.starts_at + NEW.def_time AND NEW.starts_at < r.ends_at
     );
 END;
@@ -107,7 +107,6 @@ CREATE VIEW reservation_status AS
 SELECT r.*, CASE
     WHEN status = 'CANCELLED' THEN 'CANCELLED'
     WHEN status = 'ENDED' OR ends_at <= unixepoch() THEN 'ENDED'
-    WHEN starts_at > unixepoch() THEN 'SCHEDULED'
     ELSE 'IN_USE' END AS effective_status
 FROM reservations r;
 
@@ -120,6 +119,6 @@ SELECT s.id AS seat_id, f.code AS floor_code, f.name AS floor_name,
     o.state AS occupancy_state, o.occupied_since, o.updated_at AS occupancy_updated_at
 FROM seats s JOIN rooms rm ON rm.id = s.room_id
 JOIN floors f ON f.id = rm.floor_id
-LEFT JOIN reservations r ON r.seat_id = s.id AND r.status = 'ACTIVE'
+LEFT JOIN reservations r ON r.seat_id = s.id AND r.status = 'CONFIRMED'
     AND r.starts_at <= unixepoch() AND unixepoch() < r.ends_at
 LEFT JOIN seat_occupancy o ON o.seat_id = s.id;
