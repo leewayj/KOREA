@@ -3,12 +3,13 @@ import { rooms } from '../data/rooms'
 import './home.css'
 
 export default function HomePage({ onReserve, onManage, menuOpen, reservation, reservationRoom, onViewReservation }) {
+  const primaryAction = reservation ? '좌석 변경' : '좌석 예약'
   return (
     <main className="home-content" aria-label="홈 서비스" inert={menuOpen}>
       <section className="reservation-hero" aria-labelledby="reservation-title">
         <p className="hero-eyebrow">열람실 이용</p>
-        <h2 id="reservation-title">열람실 좌석 예약</h2>
-        <Button className="reserve-button" onPress={onReserve} variant="primary">좌석 예약</Button>
+        <h2 id="reservation-title">열람실 {primaryAction}</h2>
+        <Button className="reserve-button" onPress={onReserve} variant="primary">{primaryAction}</Button>
       </section>
 
       <section className="home-card" aria-labelledby="my-reservation-title">

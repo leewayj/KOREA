@@ -4,6 +4,3 @@
 .seat-footer .seat-footer-button.ready { background: var(--blue-main); color: white; cursor: pointer; }
 .seat-modal-backdrop.change-backdrop { z-index: 5; }
 .seat-modal-backdrop.change-backdrop + .seat-footer { z-index: 4; }
-
-.seat-change-page .seat-scroll { container-type: inline-size; }
-.seat-change-page .seat-aisle { margin-left: min(204px, calc(100cqw - 106px)); }

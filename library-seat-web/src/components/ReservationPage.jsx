@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Button } from './Button'
 import './reservation.css'
 
-const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })
-const dateFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' })
+import { dateFormat, timeFormat } from '../data/reservation'
+import './reservation-flow.css'
 
-export default function ReservationPage({ reservation, room, menuOpen, onReturn, onChange, onExtend, returnOpen, onReturnOpenChange }) {
+export default function ReservationPage({ reservation, room, menuOpen, onReturn, onChange, onExtend, returnOpen, onReturnOpenChange, now }) {
   const returnButton = useRef(null)
   const returnDialog = useRef(null)
   useEffect(() => {
@@ -24,13 +24,8 @@ export default function ReservationPage({ reservation, room, menuOpen, onReturn,
     panel.addEventListener('keydown', onKeyDown)
     return () => { panel.removeEventListener('keydown', onKeyDown); trigger?.focus({ preventScroll: true }) }
   }, [returnOpen, onReturnOpenChange])
-  const [now, setNow] = useState(Date.now)
-  useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 1000)
-    return () => window.clearInterval(timer)
-  }, [])
-
   const remaining = Math.max(0, reservation.endsAt - now)
+  const endingSoon = remaining > 0 && remaining <= 10 * 60000
   const minutes = Math.ceil(remaining / 60000)
   const remainingLabel = `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`
   const duration = reservation.endsAt - reservation.startsAt
@@ -44,13 +39,13 @@ export default function ReservationPage({ reservation, room, menuOpen, onReturn,
           <p className="reservation-student">학번 {reservation.studentId}</p>
           <p>{dateFormat.format(reservation.startsAt).replaceAll('-', '.')} · {room.name}</p>
         </div>
-        <section className="reservation-details" aria-label="좌석과 예약 시간">
-          <div className="reservation-status"><span>내 좌석</span><strong>{remaining > 0 ? '예약 중' : '이용 종료'}</strong></div>
+        <section className={`reservation-details${endingSoon ? ' ending-soon' : ''}`} aria-label="좌석과 예약 시간">
+          <div className="reservation-status"><span>내 좌석</span><strong role="status">{endingSoon ? '종료 10분 전' : '예약 중'}</strong></div>
           <div className="reservation-seat-time">
             <strong className="reservation-seat-number">{reservation.seat}번</strong>
             <div className="reservation-clock" role="timer" aria-label={`남은 시간 ${Math.floor(minutes / 60)}시간 ${minutes % 60}분`}>
               <img src="/assets/reservation-time-track.svg" alt="" className="reservation-clock-track" />
-              <img src="/assets/reservation-time-ring.svg" alt="" className="reservation-clock-ring" style={{ maskImage: `conic-gradient(transparent ${elapsedAngle}deg, black ${elapsedAngle}deg)` }} />
+              <span className={endingSoon ? "reservation-clock-warning" : "reservation-clock-ring"} style={{ maskImage: `conic-gradient(transparent ${elapsedAngle}deg, black ${elapsedAngle}deg)` }}><img src={endingSoon ? "/assets/reservation-time-warning.svg" : "/assets/reservation-time-ring.svg"} alt="" /></span>
               <span>남은 시간</span><strong>{remainingLabel}</strong><small>시간:분</small>
             </div>
           </div>

@@ -1,5 +1,5 @@
-import { rooms } from './rooms'
-import { reservedSeats } from './seats'
+import { rooms } from './rooms.js'
+import { reservedSeats } from './seats.js'
 
 const storageKey = 'library-seat-preview-reservation'
 export const reservationDuration = 2 * 60 * 60 * 1000
@@ -15,7 +15,7 @@ export function readPreviewReservation() {
     if (!value || !rooms.some((room) => room.id === value.roomId)
       || !Number.isInteger(value.seat) || value.seat < 1 || value.seat > 72 || reservedSeats.has(value.seat)
       || !Number.isFinite(value.startsAt) || !Number.isFinite(value.endsAt)
-      || value.endsAt <= value.startsAt || value.endsAt <= Date.now()) return null
+      || value.endsAt <= value.startsAt) return null
     return { ...value, studentId: '202600145' }
   } catch {
     return null
@@ -29,4 +29,32 @@ export function savePreviewReservation(reservation) {
   } catch {
     // The preview still works in memory when browser storage is unavailable.
   }
+}
+
+export const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })
+export const dateFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' })
+
+export function isReservationActive(reservation, now = Date.now()) {
+  return Boolean(reservation && reservation.endsAt > now)
+}
+
+export function canChangeSeat(reservation, roomId, seat, now = Date.now()) {
+  return isReservationActive(reservation, now) && rooms.some((room) => room.id === roomId)
+    && Number.isInteger(seat) && seat >= 1 && seat <= 72
+    && !reservedSeats.has(seat) && (roomId !== reservation.roomId || seat !== reservation.seat)
+}
+
+export function changeReservationSeat(reservation, roomId, seat, now = Date.now()) {
+  return canChangeSeat(reservation, roomId, seat, now) ? { ...reservation, roomId, seat } : reservation
+}
+
+export function extendReservation(reservation, now = Date.now()) {
+  return isReservationActive(reservation, now) ? { ...reservation, endsAt: reservation.endsAt + reservationDuration } : reservation
+}
+
+// Development-only fixtures are kept out of the normal session reservation.
+export function createReservationFixture(name, now = Date.now()) {
+  const remaining = { ending: 10 * 60000, expired: -1000, expiring: 5000 }[name]
+  if (remaining === undefined) return null
+  return { roomId: 'reading-2', seat: 14, startsAt: now + remaining - reservationDuration, endsAt: now + remaining, studentId: '202600145' }
 }
