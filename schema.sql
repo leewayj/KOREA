@@ -44,6 +44,16 @@ CREATE TABLE reservations (
 CREATE INDEX reservations_seat_time ON reservations(seat_id, starts_at, ends_at)
     WHERE status = 'CONFIRMED';
 
+CREATE TABLE reservation_moves (
+    id INTEGER PRIMARY KEY,
+    reservation_id INTEGER NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
+    from_seat_id INTEGER NOT NULL REFERENCES seats(id),
+    to_seat_id INTEGER NOT NULL REFERENCES seats(id),
+    moved_at INTEGER NOT NULL CHECK (typeof(moved_at) = 'integer'),
+    CHECK (from_seat_id <> to_seat_id)
+);
+CREATE INDEX reservation_moves_reservation ON reservation_moves(reservation_id, id);
+
 -- [starts_at, ends_at): adjacent reservations are allowed.
 -- BEGIN/COMMIT on the server plus these triggers protect concurrent inserts.
 CREATE TRIGGER reservations_validate_insert BEFORE INSERT ON reservations
@@ -54,7 +64,10 @@ BEGIN
     SELECT RAISE(ABORT, 'reservation overlaps') WHERE EXISTS (
         SELECT 1 FROM reservations r
         WHERE r.seat_id = NEW.seat_id AND r.status = 'CONFIRMED'
-          AND r.starts_at < NEW.starts_at + NEW.def_time AND NEW.starts_at < r.ends_at
+          AND COALESCE((SELECT m.moved_at FROM reservation_moves m
+                        WHERE m.reservation_id = r.id ORDER BY m.id DESC LIMIT 1), r.starts_at)
+              < NEW.starts_at + NEW.def_time
+          AND NEW.starts_at < r.ends_at
     );
 END;
 
@@ -68,6 +81,16 @@ BEGIN
         WHERE OLD.status IN ('ENDED', 'CANCELLED');
     SELECT RAISE(ABORT, 'confirmed_at is immutable')
         WHERE NEW.confirmed_at <> OLD.confirmed_at;
+    SELECT RAISE(ABORT, 'cannot change duration while moving seat')
+        WHERE NEW.seat_id <> OLD.seat_id AND NEW.def_time <> OLD.def_time;
+    SELECT RAISE(ABORT, 'seat move clock is inconsistent')
+        WHERE NEW.seat_id <> OLD.seat_id AND unixepoch() <
+            COALESCE((SELECT moved_at FROM reservation_moves WHERE reservation_id = OLD.id
+                      ORDER BY id DESC LIMIT 1), OLD.starts_at);
+    SELECT RAISE(ABORT, 'duration ends before latest seat move')
+        WHERE NEW.starts_at + NEW.def_time <=
+            COALESCE((SELECT moved_at FROM reservation_moves WHERE reservation_id = OLD.id
+                      ORDER BY id DESC LIMIT 1), OLD.starts_at);
     SELECT RAISE(ABORT, 'cannot change booking while ending or cancelling')
         WHERE NEW.status <> 'CONFIRMED' AND
             (NEW.seat_id <> OLD.seat_id OR NEW.starts_at <> OLD.starts_at OR NEW.def_time <> OLD.def_time);
@@ -78,8 +101,20 @@ BEGIN
     SELECT RAISE(ABORT, 'reservation overlaps') WHERE NEW.status = 'CONFIRMED' AND EXISTS (
         SELECT 1 FROM reservations r
         WHERE r.id <> NEW.id AND r.seat_id = NEW.seat_id AND r.status = 'CONFIRMED'
-          AND r.starts_at < NEW.starts_at + NEW.def_time AND NEW.starts_at < r.ends_at
+          AND COALESCE((SELECT m.moved_at FROM reservation_moves m
+                        WHERE m.reservation_id = r.id ORDER BY m.id DESC LIMIT 1), r.starts_at)
+              < NEW.starts_at + NEW.def_time
+          AND (CASE WHEN NEW.seat_id <> OLD.seat_id THEN unixepoch()
+                    ELSE COALESCE((SELECT moved_at FROM reservation_moves WHERE reservation_id = OLD.id
+                                   ORDER BY id DESC LIMIT 1), NEW.starts_at) END) < r.ends_at
     );
+END;
+
+CREATE TRIGGER reservations_record_move AFTER UPDATE OF seat_id ON reservations
+WHEN NEW.seat_id <> OLD.seat_id
+BEGIN
+    INSERT INTO reservation_moves(reservation_id, from_seat_id, to_seat_id, moved_at)
+    VALUES (NEW.id, OLD.seat_id, NEW.seat_id, unixepoch());
 END;
 
 CREATE TRIGGER reservations_stamp_status AFTER UPDATE OF status ON reservations
