@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import HomePage from './components/HomePage'
 import SeatPage from './components/SeatPage'
+import ReservationPage from './components/ReservationPage'
+import { createPreviewReservation, readPreviewReservation, savePreviewReservation, reservationDuration } from './data/reservation'
 import { rooms } from './data/rooms'
 import './App.css'
 
 function getRoute() {
   const [page, roomId] = window.location.hash.slice(1).split('/')
-  if (page === 'seats' && rooms.some((room) => room.id === roomId)) return { page, roomId }
-  return { page: page === 'rooms' ? 'rooms' : 'home', roomId: null }
+  if (['seats', 'selected'].includes(page) && rooms.some((room) => room.id === roomId)) return { page, roomId }
+  return { page: ['rooms', 'reservation'].includes(page) ? page : 'home', roomId: null }
 }
 
 function Icon({ name }) {
@@ -35,16 +37,29 @@ function App() {
   const { page, roomId } = route
   const room = rooms.find((item) => item.id === roomId)
   const [selectedSeat, setSelectedSeat] = useState(null)
-  const [reservations, setReservations] = useState({})
+  const [reservation, setReservation] = useState(readPreviewReservation)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [returnOpen, setReturnOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const menuButton = useRef(null)
   const menuPanel = useRef(null)
+  const reservationRoom = rooms.find((item) => item.id === reservation?.roomId)
+  const changeMode = page === 'selected' && reservation?.roomId === roomId
+  const pageTitle = { home: 'HOME', rooms: '열람실 좌석 현황', seats: '좌석 선택', selected: '좌석 선택', reservation: '예약 정보 조회' }[page]
+
+  useEffect(() => { savePreviewReservation(reservation) }, [reservation])
+
+  useEffect(() => {
+    if (page === 'selected' && reservation?.roomId !== roomId) {
+      window.location.replace(`#seats/${roomId}`)
+    }
+  }, [page, roomId, reservation?.roomId])
 
   useEffect(() => {
     const onHashChange = () => {
       setRoute(getRoute())
       setSelectedSeat(null)
+      setReturnOpen(false)
       setMenuOpen(false)
       setNotice('')
     }
@@ -53,8 +68,8 @@ function App() {
   }, [])
 
   useEffect(() => {
-    document.title = page === 'home' ? 'HOME · 열람실 좌석 예약' : page === 'seats' ? '좌석 선택 · 열람실 좌석 예약' : '열람실 좌석 현황'
-  }, [page])
+    document.title = `${pageTitle} · 열람실 좌석 예약`
+  }, [pageTitle])
 
   useEffect(() => {
     if (!notice) return
@@ -64,6 +79,7 @@ function App() {
 
   useEffect(() => {
     if (!menuOpen) return
+    const trigger = menuButton.current
     menuPanel.current?.querySelector('button')?.focus()
     const onKeyDown = (event) => {
       if (event.key === 'Escape') setMenuOpen(false)
@@ -83,7 +99,7 @@ function App() {
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
-      menuButton.current?.focus()
+      trigger?.focus()
     }
   }, [menuOpen])
 
@@ -96,19 +112,20 @@ function App() {
     setMenuOpen(false)
     setNotice('')
     setSelectedSeat(null)
+    setReturnOpen(false)
     window.location.hash = nextPage
     setRoute(getRoute())
     window.scrollTo({ top: 0 })
   }
 
   return (
-    <div className={`app-shell${page === 'seats' ? ' seat-shell' : ''}`}>
-      <header className="app-header" inert={selectedSeat !== null}>
+    <div className={`app-shell${['seats', 'selected'].includes(page) ? ' seat-shell' : page === 'reservation' ? ' reservation-shell' : ''}`}>
+      <header className="app-header" inert={selectedSeat !== null || returnOpen}>
         <div className="navigation">
-          <button className={`icon-button${page === 'home' ? ' account-icon' : ''}`} aria-label={page === 'home' ? '내 계정' : page === 'seats' ? '열람실 목록으로 돌아가기' : 'HOME'} onClick={() => page === 'home' ? showNotice('내 계정 화면은 준비 중입니다.') : navigate(page === 'seats' ? 'rooms' : 'home')}>
-            <Icon name={page === 'home' ? 'account-v2' : page === 'seats' ? 'seat-back-v2' : 'nav-home-v2'} />
+          <button className={`icon-button${page === 'home' ? ' account-icon' : ''}`} aria-label={page === 'home' ? '내 계정' : page === 'seats' ? '열람실 목록으로 돌아가기' : page === 'selected' ? '예약 정보로 돌아가기' : 'HOME'} onClick={() => page === 'home' ? showNotice('내 계정 화면은 준비 중입니다.') : navigate(page === 'seats' ? 'rooms' : page === 'selected' ? 'reservation' : 'home')}>
+            <Icon name={page === 'home' ? 'account-v2' : ['seats', 'selected', 'reservation'].includes(page) ? 'seat-back-v2' : 'nav-home-v2'} />
           </button>
-          <h1>{page === 'home' ? 'HOME' : page === 'seats' ? '좌석 선택' : '열람실 좌석 현황'}</h1>
+          <h1>{pageTitle}</h1>
           <button ref={menuButton} className="icon-button" aria-label={menuOpen ? '메뉴 닫기' : '메뉴 열기'} aria-expanded={menuOpen} aria-controls={menuOpen ? 'shortcut-menu' : undefined} onClick={() => { setNotice(''); setMenuOpen(!menuOpen) }}>
             <Icon name="nav-menu-v2" />
           </button>
@@ -116,16 +133,31 @@ function App() {
       </header>
 
       {page === 'home' ? (
-        <HomePage menuOpen={menuOpen} onReserve={() => navigate('rooms')} onManage={() => showNotice('선호 좌석 관리는 준비 중입니다.')} />
-       ) : page === 'seats' ? (
-        <SeatPage key={roomId} room={room} menuOpen={menuOpen} selectedSeat={selectedSeat}
-          onSelect={setSelectedSeat} mySeat={reservations[roomId]}
+        <HomePage reservation={reservation} reservationRoom={reservationRoom} onViewReservation={() => navigate('reservation')} menuOpen={menuOpen} onReserve={() => navigate('rooms')} onManage={() => showNotice('선호 좌석 관리는 준비 중입니다.')} />
+       ) : ['seats', 'selected'].includes(page) ? (
+        <SeatPage key={`${page}/${roomId}`} changeMode={changeMode} onContinue={() => navigate('reservation')} room={room} menuOpen={menuOpen} selectedSeat={selectedSeat}
+          onSelect={setSelectedSeat} mySeat={reservation?.roomId === roomId ? reservation.seat : undefined}
           onReserve={(seat) => {
-            setReservations((current) => ({ ...current, [roomId]: seat }))
-            setSelectedSeat(null)
+            if (changeMode) {
+              setReservation((current) => ({ ...current, seat }))
+              navigate('reservation')
+            } else {
+              setReservation(createPreviewReservation(roomId, seat))
+              navigate('reservation')
+            }
           }}
           onRefresh={() => showNotice('현재 미리보기 좌석 현황입니다.')}
         />
+      ) : page === 'reservation' ? (
+        reservation ? <ReservationPage reservation={reservation} room={reservationRoom} menuOpen={menuOpen}
+          returnOpen={returnOpen} onReturnOpenChange={setReturnOpen}
+          onReturn={() => { setReservation(null); navigate('home') }}
+          onChange={() => navigate(`selected/${reservation.roomId}`)}
+          onExtend={() => {
+            setReservation((current) => ({ ...current, endsAt: current.endsAt + reservationDuration }))
+            showNotice('미리보기 예약을 2시간 연장했습니다.')
+          }}
+        /> : <main className="reservation-content" inert={menuOpen}><div className="reservation-summary"><h2>내 예약 정보</h2><p>현재 예약된 좌석이 없어요.</p></div><button className="room-card" onClick={() => navigate('rooms')}>좌석 예약하기 →</button></main>
       ) : (
         <main className="room-list" aria-label="열람실별 좌석 현황" inert={menuOpen}>
           {rooms.map((room) => <RoomStatusCard key={room.id} room={room} onSelect={(selected) => navigate(`seats/${selected.id}`)} />)}

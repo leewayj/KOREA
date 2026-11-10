@@ -2,7 +2,7 @@ import { Button } from './Button'
 import { rooms } from '../data/rooms'
 import './home.css'
 
-export default function HomePage({ onReserve, onManage, menuOpen }) {
+export default function HomePage({ onReserve, onManage, menuOpen, reservation, reservationRoom, onViewReservation }) {
   return (
     <main className="home-content" aria-label="홈 서비스" inert={menuOpen}>
       <section className="reservation-hero" aria-labelledby="reservation-title">
@@ -13,7 +13,10 @@ export default function HomePage({ onReserve, onManage, menuOpen }) {
 
       <section className="home-card" aria-labelledby="my-reservation-title">
         <h2 id="my-reservation-title">내 예약</h2>
-        <p className="reservation-empty">현재 예약된 좌석이 없어요.</p>
+        {reservation ? <>
+          <p className="reservation-empty">{reservationRoom.name} · {reservation.seat}번 좌석</p>
+          <Button variant="neutral" size="small" onPress={onViewReservation}>예약 정보 조회</Button>
+        </> : <p className="reservation-empty">현재 예약된 좌석이 없어요.</p>}
       </section>
 
       <section className="home-card" aria-labelledby="favorite-title">

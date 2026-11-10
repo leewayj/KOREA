@@ -1,0 +1,9 @@
+.seat-change-page { gap: 12px; padding-top: 16px; padding-bottom: 16px; }
+.seat-change-title { padding-top: 8px; margin-bottom: 4px; font-size: 24px; font-weight: 700; line-height: 36px; color: var(--blue-deep); letter-spacing: -.4px; }
+.seat-change-page .seat-map { height: 356px; padding-block: 20px; }
+.seat-footer .seat-footer-button.ready { background: var(--blue-main); color: white; cursor: pointer; }
+.seat-modal-backdrop.change-backdrop { z-index: 5; }
+.seat-modal-backdrop.change-backdrop + .seat-footer { z-index: 4; }
+
+.seat-change-page .seat-scroll { container-type: inline-size; }
+.seat-change-page .seat-aisle { margin-left: min(204px, calc(100cqw - 106px)); }

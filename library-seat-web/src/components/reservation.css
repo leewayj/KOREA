@@ -1,0 +1,34 @@
+.app-shell.reservation-shell { display: flex; flex-direction: column; }
+.reservation-content { padding: 24px; display: flex; flex-direction: column; gap: 16px; }
+.reservation-summary { display: flex; flex-direction: column; gap: 4px; }
+.reservation-summary h2 { color: var(--blue-deep); font-size: 24px; font-weight: 700; line-height: 36px; }
+.reservation-summary p { font-size: 14px; line-height: 21px; }
+.reservation-summary .reservation-student { color: var(--muted); font-size: 13px; line-height: 20px; }
+.reservation-details { display: flex; flex-direction: column; gap: 9px; padding: 16px 20px; background: #e8f3fc; border-radius: 16px; }
+.reservation-status { display: flex; justify-content: space-between; color: var(--blue-deep); font-size: 14px; line-height: 21px; }
+.reservation-status strong { font-size: 12px; line-height: 18px; }
+.reservation-seat-time { display: flex; align-items: center; justify-content: space-between; }
+.reservation-seat-number { color: var(--blue-deep); font-size: 40px; line-height: 60px; }
+.reservation-clock { position: relative; width: 88px; height: 88px; display: flex; flex-direction: column; align-items: center; justify-content: center; flex-shrink: 0; color: var(--blue-deep); }
+.reservation-clock img { position: absolute; inset: 0; }
+.reservation-clock span { font-size: 8.643px; line-height: 1.4; }
+.reservation-clock strong { font-size: 20.429px; line-height: 1.4; }
+.reservation-clock small { font-size: 7.857px; line-height: 1.4; }
+.reservation-time-details { border-top: 1px solid var(--divider); padding-top: 9px; }
+.reservation-time-details h3 { margin: 0 0 8px; font-size: 16px; line-height: 24px; }
+.reservation-time-details dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.reservation-time-details dt { margin: 0 0 3px; font-size: 12px; line-height: 17px; white-space: nowrap; }
+.reservation-time-details dd { margin: 0; font-size: 20px; font-weight: 700; line-height: 28px; color: var(--blue-deep); }
+.reservation-time-details dl > div:last-child dd { color: #18324b; }
+.reservation-actions { display: flex; flex-direction: column; gap: 12px; margin-top: auto; padding: 24px 24px 16px; }
+.reservation-actions > div { display: flex; gap: 12px; }
+.reservation-actions .button { flex: 1; min-width: 0; min-height: 52px; font-size: 15px; font-weight: 700; }
+.reservation-actions .button-variant-neutral { border: 1px solid var(--divider); background: white; }
+.reservation-actions .button[data-disabled] { background: var(--divider); color: var(--muted); cursor: default; }
+@media (max-width: 360px) {
+  .reservation-content { padding: 24px 16px; }
+  .reservation-actions { padding-inline: 16px; }
+}
+
+.reservation-shell .notice { bottom: 152px; }
+.return-dialog h2 { font-size: clamp(20px, 5vw, 24px); letter-spacing: -.7px; }
