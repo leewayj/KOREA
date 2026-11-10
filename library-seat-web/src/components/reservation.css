@@ -30,6 +30,3 @@
   .reservation-content { padding: 24px 16px; }
   .reservation-actions { padding-inline: 16px; }
 }
-
-.reservation-shell .notice { bottom: 152px; }
-.return-dialog h2 { font-size: clamp(20px, 5vw, 24px); letter-spacing: -.7px; }

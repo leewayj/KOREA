@@ -1,16 +1,33 @@
-.home-content { display: flex; flex-direction: column; gap: 12px; padding: 16px 24px; }
-.reservation-hero { display: flex; flex-direction: column; gap: 8px; padding: 12px 20px; border-radius: 20px; background: #e8f3fc; }
-.hero-eyebrow { color: var(--blue-main); font-size: 12px; line-height: 18px; font-weight: 500; }
-.reservation-hero h2 { color: var(--blue-deep); font-size: 24px; line-height: 36px; font-weight: 700; }
+.home-content { display: flex; flex-direction: column; gap: 16px; height: 748px; padding: 24px; overflow-y: auto; scrollbar-width: none; }
+.home-content::-webkit-scrollbar { display: none; }
+.home-content > section { flex-shrink: 0; }
+.profile-card { display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: 20px; background: #e8f3fc; }
+.profile-card h2 { margin: 0; color: var(--blue-main); font-size: 15px; line-height: 18px; font-weight: 500; }
+.profile-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 10px; min-height: 164px; padding: 6px 0 8px; }
+.profile-photo-placeholder { width: 115px; max-width: 100%; height: 150px; border-radius: 12px; background: #d9d9d9; }
+.profile-details { margin: 0; color: var(--muted); font-size: 12px; line-height: 20px; font-weight: 400; }
+.profile-details dt { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.profile-details dd { margin: 0; overflow-wrap: anywhere; }
 .reserve-button { width: 100%; }
-.home-card { display: flex; flex-direction: column; gap: 4px; padding: 12px 20px; border-radius: 16px; background: white; box-shadow: 0 4px 16px rgb(0 46 89 / 4%); }
+.home-hero-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.profile-card .reserve-button, .home-hero-actions .button { min-width: 0; height: 48px; padding: 12px 8px; border-radius: 10px; font-size: 15px; line-height: 22.5px; font-weight: 700; }
+.home-hero-actions .button-variant-neutral { border: 1px solid var(--divider); background: white; }
+.home-card { display: flex; flex-direction: column; gap: 4px; padding: 16px 20px; border-radius: 16px; background: white; box-shadow: 0 4px 16px rgb(0 46 89 / 4%); }
 .home-card h2 { color: var(--blue-deep); font-size: 16px; line-height: 24px; font-weight: 700; }
 .reservation-empty { color: var(--muted); font-size: 14px; line-height: 21px; }
+.home-reservation-active { position: relative; gap: 10px; padding: 20px; }
+.home-reservation-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.home-reservation-meta { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.home-reservation-meta time { color: var(--muted); font-size: 12px; font-weight: 500; line-height: 18px; white-space: nowrap; }
+.home-reservation-badge { padding: 3px 8px; border-radius: 8px; background: #e8f3fc; color: var(--blue-main); font-size: 11px; font-weight: 500; line-height: 18px; white-space: nowrap; }
+.home-reservation-seat { color: var(--muted); font-size: 13px; line-height: 20px; }
+.home-reservation-progress { width: 100%; color: var(--blue-main); }
+.home-reservation-link.button { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; border-radius: inherit; background: transparent; }
 .favorite-heading { display: flex; align-items: center; justify-content: space-between; min-height: 32px; gap: 12px; }
 .manage-button { width: 96px; }
 .favorite-empty { color: var(--muted); font-size: 13px; line-height: 20px; }
 .congestion-card { gap: 8px; }
-.congestion-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px 74px; align-items: center; gap: 8px; min-height: 32px; }
+.congestion-row { display: grid; grid-template-columns: minmax(0, 1fr) 64px 74px; align-items: center; gap: 8px; min-height: 36px; }
 .congestion-room { color: #18324b; font-size: 13px; line-height: 20px; font-weight: 500; }
 .usage-track { display: block; height: 6px; overflow: hidden; border-radius: 3px; background: var(--divider); }
 .usage-fill { display: block; height: 100%; border-radius: inherit; background: currentColor; }
@@ -18,7 +35,6 @@
 .congestion-row.relaxed { color: #0a76c8; }
 .congestion-row.busy { color: var(--blue-deep); }
 .congestion-row.moderate { color: var(--blue-main); }
-.account-icon img { transform: scaleX(-1); }
 
 @media (max-width: 360px) {
   .home-content { padding: 16px; }
