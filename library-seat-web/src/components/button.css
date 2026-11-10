@@ -1,0 +1,15 @@
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+.button-size-medium { min-height: 48px; padding: 12px 20px; border-radius: 12px; font-size: 16px; line-height: 24px; font-weight: 500; }
+.button-size-small { min-height: 32px; padding: 7px 16px; border-radius: 8px; font-size: 12px; line-height: 18px; font-weight: 500; }
+.button-variant-primary { background: var(--blue-main); color: white; }
+.button-variant-neutral { background: #e8f3fc; color: var(--blue-main); }
+.button[data-pressed] { filter: brightness(.95); }
+.button[data-focus-visible] { outline: 3px solid #0a76c8; outline-offset: 3px; }

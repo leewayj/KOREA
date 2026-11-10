@@ -1,24 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
+import HomePage from './components/HomePage'
+import { rooms } from './data/rooms'
 import './App.css'
 
-// Frontend preview data. Replace this boundary when the room API is connected.
-const rooms = [
-  { id: 'reading-1', name: '제1열람실 (2F)', total: 72, available: 47, reserved: 25 },
-  { id: 'reading-2', name: '제2열람실 (4F)', total: 72, available: 47, reserved: 25 },
-  { id: 'focus', name: '집중열람실 (4F)', total: 72, available: 47, reserved: 25 },
-  { id: 'holmz', name: '노상일 HOLMZ (4F)', total: 72, available: 47, reserved: 25 },
-]
+const getPage = () => window.location.hash === '#rooms' ? 'rooms' : 'home'
 
 function Icon({ name }) {
   return <img src={`/assets/${name}.svg`} alt="" draggable="false" />
 }
 
-function RoomStatusCard({ room, menuOpen, onSelect }) {
+function RoomStatusCard({ room, onSelect }) {
   return (
     <button className="room-card" onClick={() => onSelect(room)} aria-label={`${room.name} 예약하기`}>
       <span className="room-card-heading">
         <span className="room-name">{room.name}</span>
-        <span className="room-action">{menuOpen ? '보기 →' : '예약하기 →'}</span>
+        <span className="room-action">예약하기 →</span>
       </span>
       <span className="room-stats">
         <span className="room-stat"><span className="stat-label">전체</span><strong>{room.total}석</strong></span>
@@ -30,10 +26,25 @@ function RoomStatusCard({ room, menuOpen, onSelect }) {
 }
 
 function App() {
+  const [page, setPage] = useState(getPage)
   const [menuOpen, setMenuOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const menuButton = useRef(null)
   const menuPanel = useRef(null)
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setPage(getPage())
+      setMenuOpen(false)
+      setNotice('')
+    }
+    window.addEventListener('hashchange', onHashChange)
+    return () => window.removeEventListener('hashchange', onHashChange)
+  }, [])
+
+  useEffect(() => {
+    document.title = page === 'home' ? 'HOME · 열람실 좌석 예약' : '열람실 좌석 현황'
+  }, [page])
 
   useEffect(() => {
     if (!notice) return
@@ -71,23 +82,35 @@ function App() {
     setNotice(message)
   }
 
+  function navigate(nextPage) {
+    setMenuOpen(false)
+    setNotice('')
+    setPage(nextPage)
+    window.location.hash = nextPage
+    window.scrollTo({ top: 0 })
+  }
+
   return (
     <div className="app-shell">
-      <header className={`app-header${menuOpen ? ' menu-open' : ''}`}>
+      <header className="app-header">
         <div className="navigation">
-          <button className="icon-button" aria-label="HOME" onClick={() => showNotice('HOME 화면은 준비 중입니다.')}>
-            <Icon name={menuOpen ? 'home-menu-open' : 'home'} />
+          <button className={`icon-button${page === 'home' ? ' account-icon' : ''}`} aria-label={page === 'home' ? '내 계정' : 'HOME'} onClick={() => page === 'home' ? showNotice('내 계정 화면은 준비 중입니다.') : navigate('home')}>
+            <Icon name={page === 'home' ? 'account-v2' : 'nav-home-v2'} />
           </button>
-          <h1>열람실 좌석 현황</h1>
+          <h1>{page === 'home' ? 'HOME' : '열람실 좌석 현황'}</h1>
           <button ref={menuButton} className="icon-button" aria-label={menuOpen ? '메뉴 닫기' : '메뉴 열기'} aria-expanded={menuOpen} aria-controls={menuOpen ? 'shortcut-menu' : undefined} onClick={() => { setNotice(''); setMenuOpen(!menuOpen) }}>
-            <Icon name={menuOpen ? 'menu-open' : 'menu'} />
+            <Icon name="nav-menu-v2" />
           </button>
         </div>
       </header>
 
-      <main className="room-list" aria-label="열람실별 좌석 현황" inert={menuOpen}>
-        {rooms.map((room) => <RoomStatusCard key={room.id} room={room} menuOpen={menuOpen} onSelect={(selected) => showNotice(`${selected.name} 좌석 예약은 준비 중입니다.`)} />)}
-      </main>
+      {page === 'home' ? (
+        <HomePage menuOpen={menuOpen} onReserve={() => navigate('rooms')} onManage={() => showNotice('선호 좌석 관리는 준비 중입니다.')} />
+      ) : (
+        <main className="room-list" aria-label="열람실별 좌석 현황" inert={menuOpen}>
+          {rooms.map((room) => <RoomStatusCard key={room.id} room={room} onSelect={(selected) => showNotice(`${selected.name} 좌석 예약은 준비 중입니다.`)} />)}
+        </main>
+      )}
 
       {menuOpen && (
         <>
@@ -95,12 +118,12 @@ function App() {
           <section ref={menuPanel} id="shortcut-menu" className="shortcut-menu" role="dialog" aria-modal="true" aria-labelledby="shortcut-title">
             <div className="shortcut-heading">
               <h2 id="shortcut-title">바로가기</h2>
-              <button className="close-button" aria-label="바로가기 닫기" onClick={() => setMenuOpen(false)}><Icon name="close" /></button>
+              <button className="close-button" aria-label="바로가기 닫기" onClick={() => setMenuOpen(false)}><Icon name="menu-close-v2" /></button>
             </div>
             <nav className="shortcut-tiles" aria-label="바로가기">
-              <button className="shortcut-tile" onClick={() => showNotice('HOME 화면은 준비 중입니다.')}><Icon name="home-tile" /><span>HOME</span></button>
-              <button className="shortcut-tile active" aria-current="page" onClick={() => setMenuOpen(false)}><Icon name="seats" /><span>좌석 현황</span></button>
-              <button className="shortcut-tile" onClick={() => showNotice('안내사항은 준비 중입니다.')}><Icon name="info" /><span>안내사항</span></button>
+              <button className={`shortcut-tile home-shortcut${page === 'home' ? ' active' : ''}`} aria-current={page === 'home' ? 'page' : undefined} onClick={() => navigate('home')}><Icon name={page === 'home' ? 'tile-home-active-v2' : 'tile-home-v2'} /><span>HOME</span></button>
+              <button className={`shortcut-tile seats-shortcut${page === 'rooms' ? ' active' : ''}`} aria-current={page === 'rooms' ? 'page' : undefined} onClick={() => navigate('rooms')}><Icon name={page === 'rooms' ? 'tile-seats-active-v2' : 'tile-seats-v2'} /><span>좌석 현황</span></button>
+              <button className="shortcut-tile" onClick={() => showNotice('안내사항은 준비 중입니다.')}><Icon name="tile-info-v2" /><span>안내사항</span></button>
             </nav>
           </section>
         </>
