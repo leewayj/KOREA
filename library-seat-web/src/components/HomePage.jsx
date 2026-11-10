@@ -13,17 +13,22 @@ function ActiveReservationCard({ reservation, room, now, onViewReservation }) {
   return (
     <section className="home-card home-reservation-active" aria-labelledby="my-reservation-title">
       <div className="home-reservation-heading">
-        <h2 id="my-reservation-title">내 예약</h2>
-        <div className="home-reservation-meta">
-          <time dateTime={new Date(reservation.endsAt).toISOString()}>{timeFormat.format(reservation.endsAt)} 종료</time>
+        <div className="home-reservation-title">
+          <h2 id="my-reservation-title">내 예약</h2>
           <span className="home-reservation-badge">이용 중</span>
         </div>
+        <Button className="home-reservation-details" variant="neutral" size="small" aria-describedby="home-reservation-seat" onPress={onViewReservation}>
+          자세히 보기
+          <img src="/assets/reservation-details-chevron.svg" alt="" />
+        </Button>
       </div>
-      <p id="home-reservation-seat" className="home-reservation-seat">{room.name} · {reservation.seat}번 좌석</p>
+      <div className="home-reservation-info">
+        <p id="home-reservation-seat" className="home-reservation-seat">{room.name} · {reservation.seat}번 좌석</p>
+        <time dateTime={new Date(reservation.endsAt).toISOString()}>{timeFormat.format(reservation.endsAt)} 종료</time>
+      </div>
       <div className="usage-track home-reservation-progress" role="meter" aria-label="남은 예약 시간" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(remainingPercent)} aria-valuetext={remainingLabel}>
         <span className="usage-fill" style={{ width: `${remainingPercent}%` }} />
       </div>
-      <Button className="home-reservation-link" variant="neutral" aria-label="예약 정보 조회" aria-describedby="home-reservation-seat" onPress={onViewReservation} />
     </section>
   )
 }
