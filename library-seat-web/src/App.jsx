@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import HomePage from './components/HomePage'
+import SeatPage from './components/SeatPage'
 import { rooms } from './data/rooms'
 import './App.css'
 
-const getPage = () => window.location.hash === '#rooms' ? 'rooms' : 'home'
+function getRoute() {
+  const [page, roomId] = window.location.hash.slice(1).split('/')
+  if (page === 'seats' && rooms.some((room) => room.id === roomId)) return { page, roomId }
+  return { page: page === 'rooms' ? 'rooms' : 'home', roomId: null }
+}
 
 function Icon({ name }) {
   return <img src={`/assets/${name}.svg`} alt="" draggable="false" />
@@ -26,7 +31,11 @@ function RoomStatusCard({ room, onSelect }) {
 }
 
 function App() {
-  const [page, setPage] = useState(getPage)
+  const [route, setRoute] = useState(getRoute)
+  const { page, roomId } = route
+  const room = rooms.find((item) => item.id === roomId)
+  const [selectedSeat, setSelectedSeat] = useState(null)
+  const [reservations, setReservations] = useState({})
   const [menuOpen, setMenuOpen] = useState(false)
   const [notice, setNotice] = useState('')
   const menuButton = useRef(null)
@@ -34,7 +43,8 @@ function App() {
 
   useEffect(() => {
     const onHashChange = () => {
-      setPage(getPage())
+      setRoute(getRoute())
+      setSelectedSeat(null)
       setMenuOpen(false)
       setNotice('')
     }
@@ -43,7 +53,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    document.title = page === 'home' ? 'HOME · 열람실 좌석 예약' : '열람실 좌석 현황'
+    document.title = page === 'home' ? 'HOME · 열람실 좌석 예약' : page === 'seats' ? '좌석 선택 · 열람실 좌석 예약' : '열람실 좌석 현황'
   }, [page])
 
   useEffect(() => {
@@ -85,19 +95,20 @@ function App() {
   function navigate(nextPage) {
     setMenuOpen(false)
     setNotice('')
-    setPage(nextPage)
+    setSelectedSeat(null)
     window.location.hash = nextPage
+    setRoute(getRoute())
     window.scrollTo({ top: 0 })
   }
 
   return (
-    <div className="app-shell">
-      <header className="app-header">
+    <div className={`app-shell${page === 'seats' ? ' seat-shell' : ''}`}>
+      <header className="app-header" inert={selectedSeat !== null}>
         <div className="navigation">
-          <button className={`icon-button${page === 'home' ? ' account-icon' : ''}`} aria-label={page === 'home' ? '내 계정' : 'HOME'} onClick={() => page === 'home' ? showNotice('내 계정 화면은 준비 중입니다.') : navigate('home')}>
-            <Icon name={page === 'home' ? 'account-v2' : 'nav-home-v2'} />
+          <button className={`icon-button${page === 'home' ? ' account-icon' : ''}`} aria-label={page === 'home' ? '내 계정' : page === 'seats' ? '열람실 목록으로 돌아가기' : 'HOME'} onClick={() => page === 'home' ? showNotice('내 계정 화면은 준비 중입니다.') : navigate(page === 'seats' ? 'rooms' : 'home')}>
+            <Icon name={page === 'home' ? 'account-v2' : page === 'seats' ? 'seat-back-v2' : 'nav-home-v2'} />
           </button>
-          <h1>{page === 'home' ? 'HOME' : '열람실 좌석 현황'}</h1>
+          <h1>{page === 'home' ? 'HOME' : page === 'seats' ? '좌석 선택' : '열람실 좌석 현황'}</h1>
           <button ref={menuButton} className="icon-button" aria-label={menuOpen ? '메뉴 닫기' : '메뉴 열기'} aria-expanded={menuOpen} aria-controls={menuOpen ? 'shortcut-menu' : undefined} onClick={() => { setNotice(''); setMenuOpen(!menuOpen) }}>
             <Icon name="nav-menu-v2" />
           </button>
@@ -106,9 +117,18 @@ function App() {
 
       {page === 'home' ? (
         <HomePage menuOpen={menuOpen} onReserve={() => navigate('rooms')} onManage={() => showNotice('선호 좌석 관리는 준비 중입니다.')} />
+       ) : page === 'seats' ? (
+        <SeatPage key={roomId} room={room} menuOpen={menuOpen} selectedSeat={selectedSeat}
+          onSelect={setSelectedSeat} mySeat={reservations[roomId]}
+          onReserve={(seat) => {
+            setReservations((current) => ({ ...current, [roomId]: seat }))
+            setSelectedSeat(null)
+          }}
+          onRefresh={() => showNotice('현재 미리보기 좌석 현황입니다.')}
+        />
       ) : (
         <main className="room-list" aria-label="열람실별 좌석 현황" inert={menuOpen}>
-          {rooms.map((room) => <RoomStatusCard key={room.id} room={room} onSelect={(selected) => showNotice(`${selected.name} 좌석 예약은 준비 중입니다.`)} />)}
+          {rooms.map((room) => <RoomStatusCard key={room.id} room={room} onSelect={(selected) => navigate(`seats/${selected.id}`)} />)}
         </main>
       )}
 
@@ -122,7 +142,7 @@ function App() {
             </div>
             <nav className="shortcut-tiles" aria-label="바로가기">
               <button className={`shortcut-tile home-shortcut${page === 'home' ? ' active' : ''}`} aria-current={page === 'home' ? 'page' : undefined} onClick={() => navigate('home')}><Icon name={page === 'home' ? 'tile-home-active-v2' : 'tile-home-v2'} /><span>HOME</span></button>
-              <button className={`shortcut-tile seats-shortcut${page === 'rooms' ? ' active' : ''}`} aria-current={page === 'rooms' ? 'page' : undefined} onClick={() => navigate('rooms')}><Icon name={page === 'rooms' ? 'tile-seats-active-v2' : 'tile-seats-v2'} /><span>좌석 현황</span></button>
+              <button className={`shortcut-tile seats-shortcut${page !== 'home' ? ' active' : ''}`} aria-current={page !== 'home' ? 'page' : undefined} onClick={() => navigate('rooms')}><Icon name={page !== 'home' ? 'tile-seats-active-v2' : 'tile-seats-v2'} /><span>좌석 현황</span></button>
               <button className="shortcut-tile" onClick={() => showNotice('안내사항은 준비 중입니다.')}><Icon name="tile-info-v2" /><span>안내사항</span></button>
             </nav>
           </section>
