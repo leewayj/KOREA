@@ -23,12 +23,13 @@
 }
 
 * { box-sizing: border-box; }
+html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
 body { margin: 0; min-width: 280px; }
 button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 button:focus-visible { outline: 3px solid #0a76c8; outline-offset: 3px; }
 button { touch-action: manipulation; }
 h1, h2, p { margin: 0; }
-#root { min-height: 100svh; padding: 16px; }
+#root { height: 100dvh; padding: 16px; overflow: hidden; }
 
 @media (max-width: 430px) {
   #root { padding: 0; }

@@ -51,6 +51,7 @@ function App() {
   const returnTrigger = useRef(null)
   const showReturnDialog = returnOpen && Boolean(activeReservation) && ['home', 'reservation'].includes(page)
   const [notice, setNotice] = useState('')
+  const appShell = useRef(null)
   const menuButton = useRef(null)
   const menuPanel = useRef(null)
   const reservationRoom = rooms.find((item) => item.id === reservation?.roomId)
@@ -64,8 +65,11 @@ function App() {
     setReturnOpen(false)
     window.location.hash = nextPage
     setRoute(getRoute())
-    window.scrollTo({ top: 0 })
   }
+
+  useEffect(() => {
+    appShell.current?.querySelector('main')?.scrollTo({ top: 0 })
+  }, [page, roomId])
 
   useEffect(() => { if (!fixture) savePreviewReservation(reservation) }, [reservation])
 
@@ -153,7 +157,7 @@ function App() {
   }
 
   return (
-    <div className={`app-shell${['seats', 'selected'].includes(page) ? ' seat-shell' : ['reservation', 'expired'].includes(page) ? ' reservation-shell' : ''}`}>
+    <div ref={appShell} className={`app-shell${['seats', 'selected'].includes(page) ? ' seat-shell' : ['reservation', 'expired'].includes(page) ? ' reservation-shell' : ''}`}>
       <header className="app-header" inert={selectedSeat !== null || showReturnDialog}>
         <div className="navigation">
           {page === 'home' ? <span className="navigation-spacer" aria-hidden="true" /> : (

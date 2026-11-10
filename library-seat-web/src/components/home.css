@@ -1,6 +1,4 @@
-.home-content { display: flex; flex-direction: column; gap: 16px; height: 748px; padding: 24px; overflow-y: auto; scrollbar-width: none; }
-.home-content::-webkit-scrollbar { display: none; }
-.home-content > section { flex-shrink: 0; }
+.home-content { display: flex; flex-direction: column; gap: 16px; padding: 24px; }
 .profile-card { display: flex; flex-direction: column; gap: 16px; padding: 20px; border-radius: 20px; background: #e8f3fc; }
 .profile-card h2 { margin: 0; color: var(--blue-main); font-size: 15px; line-height: 18px; font-weight: 500; }
 .profile-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: 10px; min-height: 164px; padding: 6px 0 8px; }
