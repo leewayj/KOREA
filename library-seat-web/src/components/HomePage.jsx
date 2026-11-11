@@ -33,10 +33,10 @@ function ActiveReservationCard({ reservation, room, now, onViewReservation }) {
   )
 }
 
-export default function HomePage({ onReserve, onManage, menuOpen, reservation, reservationRoom, onViewReservation, now, returnOpen, onRequestReturn }) {
+export default function HomePage({ onReserve, onManage, reservation, reservationRoom, onViewReservation, now, returnOpen, onRequestReturn }) {
   const primaryAction = reservation ? '좌석 변경' : '좌석 예약'
   return (
-    <main className="home-content" aria-label="홈 서비스" inert={menuOpen || returnOpen}>
+    <main className="home-content" aria-label="홈 서비스" inert={returnOpen}>
       <section className="profile-card" aria-labelledby="profile-title">
         <h2 id="profile-title">내정보</h2>
         <div className="profile-overview">
