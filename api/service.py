@@ -2,6 +2,7 @@ from pathlib import Path
 
 from .db import connection
 from .errors import APIError
+from .timing import project, EFFECTIVE_SQL
 
 
 def require(db, table, row_id):
@@ -12,11 +13,45 @@ def require(db, table, row_id):
     return row
 
 
-def reservation(db, reservation_id):
-    row = db.execute('SELECT * FROM reservation_status WHERE id = ?', (reservation_id,)).fetchone()
+def reservation(db, reservation_id, now=None):
+    now = db.execute('SELECT unixepoch()').fetchone()[0] if now is None else now
+    row = db.execute('SELECT * FROM reservations WHERE id = ?', (reservation_id,)).fetchone()
     if row is None:
         raise APIError(404, 'RESERVATION_NOT_FOUND', '예약을 찾을 수 없습니다.')
-    return dict(row)
+    return project(row, now)
+
+
+def seat_rows(db, now, floor_id=None, room_id=None, seat_id=None, limit=100, offset=0):
+    rows = db.execute('''SELECT s.id AS seat_id,f.code AS floor_code,f.name AS floor_name,
+        rm.code AS room_code,rm.name AS room_name,s.number AS seat_number,
+        r.id AS active_reservation_id,r.starts_at,r.ends_at,
+        CASE WHEN r.id IS NULL THEN 'AVAILABLE' ELSE 'RESERVED' END AS reservation_state,
+        o.state AS occupancy_state,o.occupied_since,o.updated_at AS occupancy_updated_at,
+        n.id AS next_id,n.starts_at AS next_starts,n.ends_at AS next_ends
+        FROM seats s JOIN rooms rm ON rm.id=s.room_id JOIN floors f ON f.id=rm.floor_id
+        LEFT JOIN seat_occupancy o ON o.seat_id=s.id
+        LEFT JOIN reservations r ON r.seat_id=s.id AND r.status='CONFIRMED'
+            AND r.starts_at<=:now AND :now<r.ends_at
+        LEFT JOIN reservations n ON n.id=(SELECT nr.id FROM reservations nr
+            WHERE nr.seat_id=s.id AND nr.status='CONFIRMED' AND nr.starts_at>:now
+            ORDER BY nr.starts_at,nr.id LIMIT 1)
+        WHERE (:floor IS NULL OR rm.floor_id=:floor) AND (:room IS NULL OR s.room_id=:room)
+          AND (:seat IS NULL OR s.id=:seat)
+        ORDER BY s.id LIMIT :limit OFFSET :offset''',
+        {'now':now,'floor':floor_id,'room':room_id,'seat':seat_id,'limit':limit,'offset':offset}).fetchall()
+    result=[]
+    for row in rows:
+        item=dict(row)
+        nid,start,end=item.pop('next_id'),item.pop('next_starts'),item.pop('next_ends')
+        item['next_reservation']={'id':nid,'starts_at':start,'ends_at':end} if nid is not None else None
+        if item['active_reservation_id'] is not None:
+            timing=project({'status':'CONFIRMED','starts_at':item['starts_at'],'ends_at':item['ends_at']},now)
+            item.update({key:timing[key] for key in ('remaining_seconds','notice_code','notice_message')})
+        else:
+            item.update(remaining_seconds=None,notice_code=None,notice_message=None)
+        item['server_now']=now
+        result.append(item)
+    return result
 
 
 class Service:
@@ -36,31 +71,29 @@ class Service:
 
     def seats(self, floor_id=None, room_id=None, limit=100, offset=0):
         with connection(self.path) as db:
+            now=db.execute('SELECT unixepoch()').fetchone()[0]
             if floor_id is not None:
                 require(db, 'floors', floor_id)
             if room_id is not None:
                 require(db, 'rooms', room_id)
-            return [dict(r) for r in db.execute('''
-                SELECT v.* FROM seat_status v JOIN seats s ON s.id = v.seat_id
-                JOIN rooms rm ON rm.id = s.room_id
-                WHERE (? IS NULL OR rm.floor_id = ?) AND (? IS NULL OR s.room_id = ?)
-                ORDER BY v.seat_id LIMIT ? OFFSET ?
-            ''', (floor_id, floor_id, room_id, room_id, limit, offset))]
+            return seat_rows(db,now,floor_id,room_id,limit=limit,offset=offset)
 
     def seat(self, seat_id):
         with connection(self.path) as db:
             require(db, 'seats', seat_id)
-            return dict(db.execute('SELECT * FROM seat_status WHERE seat_id = ?', (seat_id,)).fetchone())
+            now=db.execute('SELECT unixepoch()').fetchone()[0]
+            return seat_rows(db,now,seat_id=seat_id)[0]
 
     def reservations(self, seat_id=None, effective_status=None, limit=100, offset=0):
         with connection(self.path) as db:
+            now=db.execute('SELECT unixepoch()').fetchone()[0]
             if seat_id is not None:
                 require(db, 'seats', seat_id)
-            return [dict(r) for r in db.execute('''
-                SELECT * FROM reservation_status
-                WHERE (? IS NULL OR seat_id = ?) AND (? IS NULL OR effective_status = ?)
-                ORDER BY id DESC LIMIT ? OFFSET ?
-            ''', (seat_id, seat_id, effective_status, effective_status, limit, offset))]
+            return [project(r,now) for r in db.execute(f'''
+                SELECT * FROM reservations
+                WHERE (:seat IS NULL OR seat_id=:seat) AND (:status IS NULL OR ({EFFECTIVE_SQL})=:status)
+                ORDER BY id DESC LIMIT :limit OFFSET :offset
+            ''', {'now':now,'seat':seat_id,'status':effective_status,'limit':limit,'offset':offset})]
 
     def get_reservation(self, reservation_id):
         with connection(self.path) as db:
@@ -81,12 +114,13 @@ class Service:
 
     def my_in_use(self, s_id, limit=100, offset=0):
         with connection(self.path) as db:
-            return [dict(row) for row in db.execute('''
-                SELECT r.* FROM reservation_status r
+            now=db.execute('SELECT unixepoch()').fetchone()[0]
+            return [project(row,now) for row in db.execute('''
+                SELECT r.* FROM reservations r
                 JOIN reservation_owners owner ON owner.reservation_id=r.id
-                WHERE owner.s_id=? AND r.effective_status='IN_USE'
+                WHERE owner.s_id=? AND r.status='CONFIRMED' AND r.starts_at<=? AND ?<r.ends_at
                 ORDER BY r.id DESC LIMIT ? OFFSET ?
-            ''', (s_id, limit, offset))]
+            ''', (s_id, now, now, limit, offset))]
 
     def duration(self, reservation_id, seconds, additional=False):
         with connection(self.path, write=True) as db:

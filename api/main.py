@@ -13,6 +13,9 @@ from starlette.exceptions import HTTPException
 from .auth import router as auth_router
 from .admin import router as admin_router
 from .me import router as me_router, StudentSession
+from .maintenance import router as maintenance_router
+from .clock import ReservationClock
+from .tags import SERVER, LOCATION, RESERVATION_READ, RESERVATION_WRITE, OPENAPI_TAGS
 
 from .db import default_path, validate
 from .errors import APIError
@@ -37,34 +40,36 @@ async def no_body(request: Request):
         raise APIError(422, 'VALIDATION_ERROR', '이 요청은 본문을 받지 않습니다.')
 
 
-@router.get('/health', tags=['상태'])
+@router.get('/health', tags=[SERVER])
 def health(request: Request):
     service(request).floors()
     return {'status': 'ok'}
 
 
-@router.get('/floors', response_model=list[Floor], tags=['위치'])
+@router.get('/floors', response_model=list[Floor], tags=[LOCATION])
 def floors(request: Request):
     return service(request).floors()
 
 
-@router.get('/rooms', response_model=list[Room], tags=['위치'])
+@router.get('/rooms', response_model=list[Room], tags=[LOCATION])
 def rooms(request: Request, floor_id: FilterID = None):
     return service(request).rooms(floor_id)
 
 
-@router.get('/seats', response_model=list[Seat], tags=['좌석'])
-def seats(request: Request, floor_id: FilterID = None, room_id: FilterID = None,
+@router.get('/seats', response_model=list[Seat], tags=[LOCATION])
+def seats(request: Request, response: Response, floor_id: FilterID = None, room_id: FilterID = None,
           limit: Limit = 100, offset: Offset = 0):
+    response.headers['Cache-Control']='no-store'
     return service(request).seats(floor_id, room_id, limit, offset)
 
 
-@router.get('/seats/{seat_id}', response_model=Seat, tags=['좌석'])
-def seat(request: Request, seat_id: ID):
+@router.get('/seats/{seat_id}', response_model=Seat, tags=[LOCATION])
+def seat(request: Request, response: Response, seat_id: ID):
+    response.headers['Cache-Control']='no-store'
     return service(request).seat(seat_id)
 
 
-@router.post('/reservations', response_model=Reservation, status_code=201, tags=['예약'],
+@router.post('/reservations', response_model=Reservation, status_code=201, tags=[RESERVATION_WRITE],
              summary='현재 시각부터 예약 등록',
              description='학번 로그인이 필요합니다. 본인 활성 예약이 있으면 추가 예약을 거부합니다.',
              responses={401: {'model': ErrorResponse}})
@@ -74,7 +79,7 @@ def create_reservation(request: Request, response: Response, body: ReservationCr
     return result
 
 
-@router.get('/reservations', response_model=list[Reservation], tags=['예약'],
+@router.get('/reservations', response_model=list[Reservation], tags=[RESERVATION_READ],
             summary='예약 목록 및 좌석별 이력 조회',
             description='현재 상태 필터를 적용하며 최신 예약부터 반환합니다. 검색 결과가 없으면 빈 배열입니다.')
 def reservations(request: Request, seat_id: FilterID = None,
@@ -83,41 +88,41 @@ def reservations(request: Request, seat_id: FilterID = None,
     return service(request).reservations(seat_id, effective_status, limit, offset)
 
 
-@router.get('/reservations/{reservation_id}', response_model=Reservation, tags=['예약'],
+@router.get('/reservations/{reservation_id}', response_model=Reservation, tags=[RESERVATION_READ],
             summary='예약 상세와 현재 이용 상태 조회')
 def get_reservation(request: Request, reservation_id: ID):
     return service(request).get_reservation(reservation_id)
 
 
-@router.patch('/reservations/{reservation_id}', response_model=Reservation, tags=['예약'],
+@router.patch('/reservations/{reservation_id}', response_model=Reservation, tags=[RESERVATION_WRITE],
               summary='시작 시각부터의 총 이용시간 변경',
               description='def_time을 총 이용시간(초)으로 교체합니다. 시작·확정 시각은 변경하지 않습니다.')
 def edit_reservation(request: Request, reservation_id: ID, body: ReservationEdit):
     return service(request).duration(reservation_id, body.def_time)
 
 
-@router.post('/reservations/{reservation_id}/extend', response_model=Reservation, tags=['예약'],
+@router.post('/reservations/{reservation_id}/extend', response_model=Reservation, tags=[RESERVATION_WRITE],
              summary='기존 예약에 이용시간 추가',
              description='additional_seconds를 더합니다. 반복 호출하면 매번 시간이 추가됩니다.')
 def extend_reservation(request: Request, reservation_id: ID, body: ReservationExtend):
     return service(request).duration(reservation_id, body.additional_seconds, additional=True)
 
 
-@router.post('/reservations/{reservation_id}/move', response_model=Reservation, tags=['예약'],
+@router.post('/reservations/{reservation_id}/move', response_model=Reservation, tags=[RESERVATION_WRITE],
              summary='좌석 이동',
              description='이용 중인 예약의 좌석만 바꿉니다. 남은 시간의 예약 충돌을 검사하며, 시간·착석 상태는 유지합니다.')
 def move_reservation(request: Request, reservation_id: ID, body: ReservationMove):
     return service(request).move(reservation_id, body.target_seat_id)
 
 
-@router.post('/reservations/{reservation_id}/cancel', response_model=Reservation, tags=['예약'],
+@router.post('/reservations/{reservation_id}/cancel', response_model=Reservation, tags=[RESERVATION_WRITE],
              summary='예약 취소', description='같은 취소를 반복하면 기존 결과를 반환합니다. 자연 만료한 예약은 취소할 수 없습니다.',
              dependencies=[Depends(no_body)])
 def cancel_reservation(request: Request, reservation_id: ID):
     return service(request).transition(reservation_id, 'CANCELLED')
 
 
-@router.post('/reservations/{reservation_id}/end', response_model=Reservation, tags=['예약'],
+@router.post('/reservations/{reservation_id}/end', response_model=Reservation, tags=[RESERVATION_WRITE],
              summary='예약 조기 종료', description='같은 종료를 반복하면 기존 결과를 반환합니다. 착석 상태는 변경하지 않습니다.',
              dependencies=[Depends(no_body)])
 def end_reservation(request: Request, reservation_id: ID):
@@ -130,9 +135,17 @@ def create_app(database_path: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         validate(path)
-        yield
+        worker=ReservationClock(path)
+        app.state.reservation_clock=worker
+        if os.getenv('KOREA_CLOCK_ENABLED','1') != '0':
+            worker.start()
+        try:
+            yield
+        finally:
+            if worker.thread is not None:
+                worker.stop()
 
-    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.6.0', lifespan=lifespan,
+    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.9.0', lifespan=lifespan, openapi_tags=OPENAPI_TAGS,
                   description='관리자 테스트용 API. 시간은 UTC Unix 초이며, 실제 착석자 인증은 하지 않습니다.')
     app.state.service = Service(path)
 
@@ -165,11 +178,12 @@ def create_app(database_path: Path | None = None) -> FastAPI:
     origins = [value.strip() for value in os.getenv('KOREA_CORS_ORIGINS', '').split(',') if value.strip()]
     if origins:
         app.add_middleware(CORSMiddleware, allow_origins=origins,
-                           allow_methods=['GET', 'POST', 'PATCH'], allow_headers=['Content-Type', 'Authorization'])
+                           allow_methods=['GET', 'POST', 'PATCH', 'DELETE'], allow_headers=['Content-Type', 'Authorization'])
     app.include_router(router)
     app.include_router(auth_router)
     app.include_router(admin_router)
     app.include_router(me_router)
+    app.include_router(maintenance_router)
     return app
 
 

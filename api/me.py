@@ -4,14 +4,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Request, Response
 
 from .auth import require_session
+from .tags import MY_DATA, RESERVATION_WRITE
 from .models import ErrorResponse, Reservation, ReservationCreate
 
-router = APIRouter(prefix='/me', tags=['내 예약'], responses={
+router = APIRouter(prefix='/me', responses={
     code: {'model': ErrorResponse} for code in (401, 404, 409, 422, 503)})
 StudentSession = Annotated[dict, Depends(require_session)]
 
 
-@router.post('/reservations', response_model=Reservation, status_code=201,
+@router.post('/reservations', response_model=Reservation, status_code=201, tags=[RESERVATION_WRITE],
              summary='로그인 사용자 명의로 현재 시각부터 예약',
              description='학번은 본문이 아닌 로그인 토큰에서 가져옵니다.')
 def create(request: Request, response: Response, body: ReservationCreate, session: StudentSession):
@@ -21,7 +22,7 @@ def create(request: Request, response: Response, body: ReservationCreate, sessio
     return result
 
 
-@router.get('/reservations', response_model=list[Reservation], summary='내 이용 중(IN_USE) 예약 조회',
+@router.get('/reservations', response_model=list[Reservation], tags=[MY_DATA], summary='내 이용 중(IN_USE) 예약 조회',
             description='로그인 사용자에게 연결된 IN_USE 예약만 반환합니다. 없으면 빈 배열입니다.')
 def in_use(request: Request, response: Response, session: StudentSession,
            limit: Annotated[int, Query(ge=1, le=500)] = 100,

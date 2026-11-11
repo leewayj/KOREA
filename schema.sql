@@ -7,6 +7,14 @@ CREATE TABLE users (
     created_at INTEGER NOT NULL DEFAULT (unixepoch()) CHECK (typeof(created_at) = 'integer')
 );
 
+-- Profile registration is independent of login/session creation.
+CREATE TABLE user_profiles (
+    s_id TEXT PRIMARY KEY NOT NULL REFERENCES users(s_id),
+    name TEXT NOT NULL CHECK (length(trim(name)) BETWEEN 1 AND 100 AND name = trim(name)),
+    college TEXT NOT NULL CHECK (length(trim(college)) BETWEEN 1 AND 100 AND college = trim(college)),
+    department TEXT NOT NULL CHECK (length(trim(department)) BETWEEN 1 AND 100 AND department = trim(department))
+);
+
 CREATE TABLE auth_sessions (
     token_hash TEXT PRIMARY KEY NOT NULL
         CHECK (length(token_hash) = 64 AND token_hash NOT GLOB '*[^0-9a-f]*'),
@@ -132,12 +140,31 @@ CREATE TABLE reservation_admin_context (
     username TEXT NOT NULL REFERENCES admins(username)
 );
 
+CREATE TABLE reservation_admin_insert_context (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    username TEXT NOT NULL REFERENCES admins(username)
+);
+
+CREATE TABLE reservation_time_states (
+    reservation_id INTEGER PRIMARY KEY REFERENCES reservations(id) ON DELETE CASCADE,
+    effective_status TEXT NOT NULL CHECK (effective_status IN ('SCHEDULED','IN_USE','ENDED','CANCELLED')),
+    notice_code TEXT,
+    evaluated_at INTEGER NOT NULL
+);
+
+CREATE TABLE reservation_clock_lease (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    owner TEXT NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+
 -- [starts_at, ends_at): adjacent reservations are allowed.
 -- BEGIN/COMMIT on the server plus these triggers protect concurrent inserts.
 CREATE TRIGGER reservations_validate_insert BEFORE INSERT ON reservations
 BEGIN
     SELECT RAISE(ABORT, 'reservation must start at current time')
-        WHERE NEW.starts_at <> unixepoch();
+        WHERE NEW.starts_at <> unixepoch()
+          AND NOT EXISTS (SELECT 1 FROM reservation_admin_insert_context);
     SELECT RAISE(ABORT, 'new reservation must be CONFIRMED') WHERE NEW.status <> 'CONFIRMED';
     SELECT RAISE(ABORT, 'reservation overlaps') WHERE EXISTS (
         SELECT 1 FROM reservations r

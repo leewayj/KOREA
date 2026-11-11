@@ -23,10 +23,16 @@ def connection(path: Path, write=False):
         db.execute('PRAGMA busy_timeout = 5000')
         if write:
             db.execute('BEGIN IMMEDIATE')
+        else:
+            db.execute('BEGIN')
         yield db
         if write:
             if db.execute('SELECT 1 FROM reservation_admin_context LIMIT 1').fetchone():
                 raise RuntimeError('Administrator context must be cleared before commit.')
+            if db.execute('SELECT 1 FROM reservation_admin_insert_context LIMIT 1').fetchone():
+                raise RuntimeError('Administrator insert context must be cleared before commit.')
+            from .timing import reconcile
+            reconcile(db)
             db.commit()
     except sqlite3.Error as error:
         if db is not None:
@@ -52,7 +58,9 @@ def validate(path: Path):
                     'reservations_validate_update', 'reservations_stamp_status', 'seats_initialize_occupancy',
                     'reservation_moves', 'reservations_record_move', 'users', 'auth_sessions',
                     'admins', 'admin_sessions', 'reservation_admin_context', 'reservation_owners',
-                    'reservation_owners_one_active', 'reservation_owners_immutable', 'reservations_one_active_user')
+                    'reservation_owners_one_active', 'reservation_owners_immutable', 'reservations_one_active_user',
+                    'user_profiles', 'reservation_admin_insert_context',
+                    'reservation_time_states', 'reservation_clock_lease')
         if not all(name in definitions for name in required):
             raise RuntimeError('Incompatible database: seat-move schema, ID-auth schema, admin schema and reservation ownership schema are required. Back up and run python -m api.migrations --backup <backup.db>.')
         if ("'CONFIRMED'" not in definitions['reservations']
@@ -64,6 +72,8 @@ def validate(path: Path):
             raise RuntimeError('Database contains foreign key violations.')
         if db.execute('SELECT 1 FROM reservation_admin_context LIMIT 1').fetchone():
             raise RuntimeError('Unexpected persisted administrator context.')
+        if db.execute('SELECT 1 FROM reservation_admin_insert_context LIMIT 1').fetchone():
+            raise RuntimeError('Unexpected persisted administrator insert context.')
         db.execute('SELECT * FROM seat_status LIMIT 0')
         db.execute('SELECT * FROM reservation_status LIMIT 0')
 

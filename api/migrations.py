@@ -12,7 +12,9 @@ AUTH_OBJECTS = ('users', 'auth_sessions', 'auth_sessions_user', 'auth_sessions_e
 ADMIN_OBJECTS = ('admins', 'admin_sessions', 'admin_sessions_expiry', 'reservation_admin_context')
 OWNER_OBJECTS = ('reservation_owners', 'reservation_owners_user')
 ACTIVE_OBJECTS = ('reservation_owners_one_active', 'reservation_owners_immutable', 'reservations_one_active_user')
-OBJECTS = SEAT_OBJECTS + AUTH_OBJECTS + ADMIN_OBJECTS + OWNER_OBJECTS + ACTIVE_OBJECTS + ('reservation_status',)
+PROFILE_OBJECTS = ('user_profiles',)
+TIME_OBJECTS = ('reservation_admin_insert_context', 'reservation_time_states', 'reservation_clock_lease')
+OBJECTS = SEAT_OBJECTS + AUTH_OBJECTS + ADMIN_OBJECTS + OWNER_OBJECTS + ACTIVE_OBJECTS + PROFILE_OBJECTS + TIME_OBJECTS + ('reservation_status',)
 
 
 def definitions(db):
@@ -46,6 +48,8 @@ def upgrade(path: Path, backup: Path):
         admin_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in ADMIN_OBJECTS)
         owner_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in OWNER_OBJECTS)
         active_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in ACTIVE_OBJECTS)
+        profile_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in PROFILE_OBJECTS)
+        time_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in TIME_OBJECTS)
         if not seat_current and ('reservation_moves' in current or 'reservations_record_move' in current):
             raise RuntimeError('Partial or different seat-move schema found; inspect before migration.')
         if not auth_current and any(name in current for name in AUTH_OBJECTS):
@@ -56,6 +60,10 @@ def upgrade(path: Path, backup: Path):
             raise RuntimeError('Partial or different reservation ownership schema found; inspect before migration.')
         if not active_current and any(name in current for name in ACTIVE_OBJECTS):
             raise RuntimeError('Partial or different single-active schema found; inspect before migration.')
+        if not profile_current and any(name in current for name in PROFILE_OBJECTS):
+            raise RuntimeError('Partial or different user profile schema found; inspect before migration.')
+        if not time_current and any(name in current for name in TIME_OBJECTS):
+            raise RuntimeError('Partial or different reservation clock schema found; inspect before migration.')
         if 'reservation_owners' in current and db.execute('''
             SELECT 1 FROM reservation_owners owner JOIN reservations r ON r.id=owner.reservation_id
             WHERE r.status='CONFIRMED' AND r.ends_at>unixepoch()
@@ -85,6 +93,9 @@ def upgrade(path: Path, backup: Path):
             if not admin_current:
                 for name in ADMIN_OBJECTS:
                     db.execute(expected[name])
+            if not time_current:
+                for name in TIME_OBJECTS:
+                    db.execute(expected[name])
             for name in ('reservations_validate_insert', 'reservations_validate_update', 'reservations_record_move'):
                 if normalize(current.get(name)) != normalize(expected[name]):
                     db.execute(f'DROP TRIGGER IF EXISTS {name}')
@@ -97,6 +108,9 @@ def upgrade(path: Path, backup: Path):
                     db.execute(expected[name])
             if not active_current:
                 for name in ACTIVE_OBJECTS:
+                    db.execute(expected[name])
+            if not profile_current:
+                for name in PROFILE_OBJECTS:
                     db.execute(expected[name])
             if normalize(current.get('reservation_status')) != normalize(expected['reservation_status']):
                 db.execute('DROP VIEW reservation_status')
