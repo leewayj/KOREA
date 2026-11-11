@@ -4,13 +4,15 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, FastAPI, Path as PathParam, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, Path as PathParam, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
 from .auth import router as auth_router
+from .admin import router as admin_router
+from .me import router as me_router, StudentSession
 
 from .db import default_path, validate
 from .errors import APIError
@@ -64,9 +66,12 @@ def seat(request: Request, seat_id: ID):
 
 @router.post('/reservations', response_model=Reservation, status_code=201, tags=['예약'],
              summary='현재 시각부터 예약 등록',
-             description='seat_id와 선택적인 def_time(초)을 받습니다. 시각·상태 필드는 DB가 설정합니다.')
-def create_reservation(request: Request, body: ReservationCreate):
-    return service(request).create(body.seat_id, body.def_time)
+             description='학번 로그인이 필요합니다. 본인 활성 예약이 있으면 추가 예약을 거부합니다.',
+             responses={401: {'model': ErrorResponse}})
+def create_reservation(request: Request, response: Response, body: ReservationCreate, session: StudentSession):
+    result = service(request).create(body.seat_id, body.def_time, owner_s_id=session['user']['s_id'])
+    response.headers['Cache-Control'] = 'no-store'
+    return result
 
 
 @router.get('/reservations', response_model=list[Reservation], tags=['예약'],
@@ -127,7 +132,7 @@ def create_app(database_path: Path | None = None) -> FastAPI:
         validate(path)
         yield
 
-    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.3.0', lifespan=lifespan,
+    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.6.0', lifespan=lifespan,
                   description='관리자 테스트용 API. 시간은 UTC Unix 초이며, 실제 착석자 인증은 하지 않습니다.')
     app.state.service = Service(path)
 
@@ -163,6 +168,8 @@ def create_app(database_path: Path | None = None) -> FastAPI:
                            allow_methods=['GET', 'POST', 'PATCH'], allow_headers=['Content-Type', 'Authorization'])
     app.include_router(router)
     app.include_router(auth_router)
+    app.include_router(admin_router)
+    app.include_router(me_router)
     return app
 
 

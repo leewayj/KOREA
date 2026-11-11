@@ -66,14 +66,27 @@ class Service:
         with connection(self.path) as db:
             return reservation(db, reservation_id)
 
-    def create(self, seat_id, def_time=None):
+    def create(self, seat_id, def_time=None, *, owner_s_id):
+        if owner_s_id is None:
+            raise APIError(401, 'AUTH_REQUIRED', '예약하려면 로그인해야 합니다.')
         with connection(self.path, write=True) as db:
             require(db, 'seats', seat_id)
             if def_time is None:
                 cursor = db.execute('INSERT INTO reservations(seat_id) VALUES (?)', (seat_id,))
             else:
                 cursor = db.execute('INSERT INTO reservations(seat_id, def_time) VALUES (?, ?)', (seat_id, def_time))
+            db.execute('INSERT INTO reservation_owners(reservation_id,s_id) VALUES(?,?)',
+                       (cursor.lastrowid, owner_s_id))
             return reservation(db, cursor.lastrowid)
+
+    def my_in_use(self, s_id, limit=100, offset=0):
+        with connection(self.path) as db:
+            return [dict(row) for row in db.execute('''
+                SELECT r.* FROM reservation_status r
+                JOIN reservation_owners owner ON owner.reservation_id=r.id
+                WHERE owner.s_id=? AND r.effective_status='IN_USE'
+                ORDER BY r.id DESC LIMIT ? OFFSET ?
+            ''', (s_id, limit, offset))]
 
     def duration(self, reservation_id, seconds, additional=False):
         with connection(self.path, write=True) as db:

@@ -25,6 +25,8 @@ def connection(path: Path, write=False):
             db.execute('BEGIN IMMEDIATE')
         yield db
         if write:
+            if db.execute('SELECT 1 FROM reservation_admin_context LIMIT 1').fetchone():
+                raise RuntimeError('Administrator context must be cleared before commit.')
             db.commit()
     except sqlite3.Error as error:
         if db is not None:
@@ -48,9 +50,11 @@ def validate(path: Path):
         required = ('floors', 'rooms', 'seats', 'reservations', 'seat_occupancy',
                     'reservation_status', 'seat_status', 'reservations_validate_insert',
                     'reservations_validate_update', 'reservations_stamp_status', 'seats_initialize_occupancy',
-                    'reservation_moves', 'reservations_record_move', 'users', 'auth_sessions')
+                    'reservation_moves', 'reservations_record_move', 'users', 'auth_sessions',
+                    'admins', 'admin_sessions', 'reservation_admin_context', 'reservation_owners',
+                    'reservation_owners_one_active', 'reservation_owners_immutable', 'reservations_one_active_user')
         if not all(name in definitions for name in required):
-            raise RuntimeError('Incompatible database: seat-move schema and ID-auth schema are required. Back up and run python -m api.migrations --backup <backup.db>.')
+            raise RuntimeError('Incompatible database: seat-move schema, ID-auth schema, admin schema and reservation ownership schema are required. Back up and run python -m api.migrations --backup <backup.db>.')
         if ("'CONFIRMED'" not in definitions['reservations']
                 or 'starts_at is immutable' not in definitions['reservations_validate_update']
                 or 'confirmed_at is immutable' not in definitions['reservations_validate_update']
@@ -58,6 +62,8 @@ def validate(path: Path):
             raise RuntimeError('Incompatible reservation rules; use the current KOREA schema.')
         if db.execute('PRAGMA foreign_key_check').fetchone():
             raise RuntimeError('Database contains foreign key violations.')
+        if db.execute('SELECT 1 FROM reservation_admin_context LIMIT 1').fetchone():
+            raise RuntimeError('Unexpected persisted administrator context.')
         db.execute('SELECT * FROM seat_status LIMIT 0')
         db.execute('SELECT * FROM reservation_status LIMIT 0')
 
