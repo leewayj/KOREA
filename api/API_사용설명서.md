@@ -2,9 +2,7 @@
 
 작성 기준: 2026-11-11 · API 1.9.0 · Swagger 9개 태그 / 26개 API
 
-실행 대상: `C:\workspace\AI+X\Project\KOREA`
-
-현재 프로젝트의 라우트·입력/응답 모델·서비스·시간 판정·인증·정리 로직을 확인하여 작성했다. 기능 추가 순서가 아닌 실제 사용하는 순서로 설명한다. 개발 복사본이나 이전 버전이 아닌 KOREA 코드가 기준이다.
+실행 기준: `api` 폴더와 `schema.sql`이 있는 프로젝트 루트. 프로젝트 경로·Python·DB·서버 주소는 아래 설정값으로 개인 환경에 맞춘다. Windows PowerShell 명령을 기준으로 설명한다.
 
 ## 1. 제공 기능과 사용 흐름
 
@@ -14,40 +12,76 @@
 
 현재 센서 수신·장치 연결 판정·예약과 착석을 조합한 최종 상태 7종·LED 제어는 구현하지 않았다. 착석 상태는 DB에 저장된 값을 반환하며, `IN_USE`는 예약시간 기준이다. 기존 React 미리보기 화면의 API 연동은 별도 작업이다.
 
-참조 문서는 [requests.md](C:/workspace/AI+X/Project/Docs/requests.md), [기능명세서2.1.md](C:/workspace/AI+X/Project/Docs/기능명세서2.1.md), [schedule.md](C:/workspace/AI+X/Project/Docs/schedule.md)다. 사용자 등록·학번 로그인·내 예약·관리자 권한·상태 직접 수정은 이후 대화에서 추가한 범위다. 참조 문서의 모든 요구사항을 완료한 상태는 아니다.
+## 2. 개인 환경 설정
 
-![일반 사용자와 관리자 API 사용 흐름](C:/workspace/AI+X/workspace/API_사용흐름도.png)
+서버를 실행하는 사람은 2-1, 이미 실행 중인 API에 요청만 보내는 사람은 2-2를 설정한다. 예제는 이 변수들을 계속 사용하므로 새 PowerShell 창에서는 해당 설정을 다시 실행한다. 프로젝트를 가져오는 위치나 드라이브 이름은 자유롭게 정할 수 있다.
 
-## 2. 현재 PC에서 실행
+### 2-1. 서버 PC 설정
 
-PowerShell에서 다음을 실행한다. 현재 KOREA의 `library.db`는 최신 구조로 마이그레이션되어 있으므로 초기화를 다시 하지 않는다.
+Python 설치와 프로젝트 준비 후 실행한다. 프로젝트 루트의 전체 경로를 입력하고 나머지 기본값은 필요에 맞춰 수정한다.
 
 ```powershell
-cd 'C:\workspace\AI+X\Project\KOREA'
-& 'C:\workspace\AI+X\workspace\korea_api\.venv\Scripts\python.exe' -m uvicorn api.main:app --host 127.0.0.1 --port 8000
+$projectRoot = (Read-Host '프로젝트 루트의 전체 경로(api 폴더가 있는 위치)').Trim().Trim('"')
+Set-Location -LiteralPath $projectRoot
+$projectRoot = (Get-Location).Path
+if (-not (Test-Path -LiteralPath (Join-Path $projectRoot 'api/main.py'))) {
+    throw '프로젝트 루트 경로를 확인하세요.'
+}
+
+$pythonExe = Join-Path $projectRoot '.venv/Scripts/python.exe'
+$dbPath = Join-Path $projectRoot 'library.db'
+$bindAddress = '127.0.0.1'
+$apiPort = 8000
+$env:KOREA_DB_PATH = $dbPath
+$env:KOREA_CLOCK_ENABLED = '1'
 ```
 
-프로젝트 코드는 KOREA에서 실행하고, Python 실행환경은 workspace의 기존 가상환경을 사용한다. 서버 창은 실행 중 열어 두며 종료는 `Ctrl+C`다. 코드 변경 후에는 서버를 재시작한다.
-
-| 주소 | 용도 |
+| 설정값 | 개인 환경에 맞추는 방법 |
 |---|---|
-| [Swagger](http://127.0.0.1:8000/docs) | 요청 입력과 실행 |
-| [Health](http://127.0.0.1:8000/health) | 서버·DB 연결 확인. 정상 응답 `{"status":"ok"}` |
-| [OpenAPI](http://127.0.0.1:8000/openapi.json) | 실행 중인 API 정의 |
+| `$projectRoot` | 실제 프로젝트 루트. 공백이 있는 경로도 사용 가능 |
+| `$pythonExe` | 사용할 Python 실행 파일. 기본은 프로젝트 내부 `.venv` |
+| `$dbPath` | 사용할 DB 파일 전체 경로. 기본은 프로젝트 루트의 `library.db` |
+| `$bindAddress` | 같은 PC에서만 쓰면 `127.0.0.1`. 다른 PC 연결을 받을 때는 해당 인터페이스 IP 또는 `0.0.0.0` |
+| `$apiPort` | 사용 가능한 서버 포트. 기본 8000 |
 
-Swagger에서는 **태그 선택 → API 펼치기 → Try it out → 입력 → Execute** 순서로 실행한다. 정상 코드와 오류 코드는 아래 설명을 따른다.
+기존 가상환경을 사용하려면 `$pythonExe`만 그 실행 파일의 전체 경로로 바꾼다. macOS/Linux의 가상환경 Python 경로는 보통 `.venv/bin/python`이며, 해당 운영체제의 셸에 맞춰 명령을 사용한다. 아래 설치·생성 예제의 `python` 명령도 설치한 Python의 명령명 또는 실행 파일 경로에 맞춘다.
 
-## 3. 새 PC·새 DB 준비
+### 2-2. 요청을 보내는 PC 설정
 
-Python과 프로젝트를 준비한 뒤 KOREA 루트에서 실행한다. 실제 프로젝트 위치가 다르면 `cd` 경로를 바꾼다.
+서버 실행과 별도의 PowerShell 창에서 다음을 실행한다. 서버 PC와 다른 PC에서도 주소에 접근할 수 있다면 같은 API 요청을 사용할 수 있다.
 
 ```powershell
-cd 'C:\workspace\AI+X\Project\KOREA'
-python -m venv .venv
-& '.\.venv\Scripts\python.exe' -m pip install -r '.\api\requirements\requirements.txt'
+$baseUrl = (Read-Host 'API 기본 주소(예: http://127.0.0.1:8000)').Trim().TrimEnd('/')
+$studentId = Read-Host '사용할 학번(숫자 10자리)'
+$adminUsername = Read-Host '관리자 ID(관리자 기능 사용 시 입력)'
 ```
 
-실행 패키지는 `api/requirements/requirements.txt`, 테스트를 포함한 환경은 같은 폴더의 `requirements-dev.txt`다. 기존 검증 환경의 고정 버전 목록은 `requirements-lock.txt`다. 가상환경을 활성화하지 않아도 위처럼 Python 경로를 직접 지정할 수 있다.
+`$baseUrl`에는 프로토콜·호스트·포트까지만 입력하고 `/docs`는 붙이지 않는다. 같은 PC라면 위 예시 주소를 사용할 수 있지만 포트를 바꿨다면 같이 바꾼다. 다른 PC에서는 서버의 실제 IP나 도메인을 입력한다. `0.0.0.0`은 서버 바인딩 값이며 접속 주소로 사용하지 않는다. API 요청만 하는 PC에는 프로젝트 파일·DB·Python 설치가 필요하지 않다.
+
+| 접속할 주소 | 용도 |
+|---|---|
+| `$baseUrl/docs` | 브라우저에서 Swagger 열기 |
+| `$baseUrl/health` | 연결 확인. 정상 응답 `{"status":"ok"}` |
+| `$baseUrl/openapi.json` | 실행 중인 OpenAPI 정의 |
+
+브라우저 주소창에서는 변수명이 아니라 실제 주소를 입력한다. PowerShell에서는 `"$baseUrl/health"`처럼 사용한다. Swagger는 **태그 선택 → API 펼치기 → Try it out → 입력 → Execute** 순서로 실행한다.
+
+## 3. 설치·DB 준비·서버 실행
+
+서버 PC에서 2-1의 설정을 실행한 상태로 진행한다. 새 가상환경이 필요한 경우에만 생성한다.
+
+```powershell
+Set-Location -LiteralPath $projectRoot
+python -m venv .venv
+```
+
+설정한 Python에 실행 패키지를 설치한다.
+
+```powershell
+& $pythonExe -m pip install -r (Join-Path $projectRoot 'api/requirements/requirements.txt')
+```
+
+기존 환경이 준비되어 있으면 생성을 생략한다. 실행 패키지는 `api/requirements/requirements.txt`, 테스트를 포함한 환경은 같은 폴더의 `requirements-dev.txt`다. 기존 검증 환경의 고정 버전 목록은 `requirements-lock.txt`다. 가상환경 활성화 없이 `$pythonExe`로 직접 실행할 수 있다.
 
 | DB 상태 | 진행 방법 |
 |---|---|
@@ -55,10 +89,10 @@ python -m venv .venv
 | DB 파일이 없음 | 아래 신규 생성 실행 |
 | 호환 가능한 이전 DB가 있음 | 서버 중지 후 아래 마이그레이션 실행 |
 
-신규 DB — 해당 파일이 없을 때만 실행:
+신규 DB — `$dbPath` 파일이 없을 때만 실행한다. 다른 폴더를 지정했다면 상위 폴더를 먼저 준비한다.
 
 ```powershell
-& '.\.venv\Scripts\python.exe' -m api.db init --demo
+& $pythonExe -m api.db init --demo --output $dbPath
 ```
 
 `--demo`는 층 2개·방 4개·좌석 8개를 넣는다. 새 DB의 좌석 ID는 1~8이며 사용자·예약·세션·관리자 계정은 비어 있다. 생략하면 스키마만 만든다. 기존 파일을 덮어쓰지 않으므로 파일이 있으면 생성은 실패한다.
@@ -66,16 +100,20 @@ python -m venv .venv
 이전 DB 업그레이드:
 
 ```powershell
-& '.\.venv\Scripts\python.exe' -m api.migrations --database '.\library.db' --backup '.\library_before_upgrade.db'
+$backupPath = "$dbPath.before-upgrade-$(Get-Date -Format 'yyyyMMdd-HHmmss').db"
+& $pythonExe -m api.migrations --database $dbPath --backup $backupPath
 ```
 
 백업 파일은 아직 존재하지 않는 이름을 지정한다. 정상 적용은 `upgraded`, 이미 최신이면 `already_current`와 `backup: null`이다. 임의 구조의 모든 DB를 변환하지는 않으며 부분 변경·다른 구조·기존 다중 활성 예약 등이 있으면 적용을 거부할 수 있다. 기존 DB에 전체 `schema.sql`을 재실행하지 않는다.
 
-새 PC에서 서버 실행:
+본인의 DB 상태에 맞는 준비를 마친 후 서버 실행:
 
 ```powershell
-& '.\.venv\Scripts\python.exe' -m uvicorn api.main:app --host 127.0.0.1 --port 8000
+Set-Location -LiteralPath $projectRoot
+& $pythonExe -m uvicorn api.main:app --host $bindAddress --port $apiPort
 ```
+
+서버 창은 실행 중 열어 두며 종료는 `Ctrl+C`다. 코드·환경변수를 바꿨다면 재시작한다. 접속이 안 되면 실제 서버 주소·포트와 서버의 바인딩·네트워크 접근 가능 여부를 확인한다. 이 설명서는 개인 DB가 이미 마이그레이션되었다고 가정하지 않는다.
 
 ## 4. 인증과 공통 입력 규칙
 
@@ -97,7 +135,7 @@ python -m venv .venv
 
 ## 5. 전체 API 목록
 
-기본 주소: `http://127.0.0.1:8000`. 표의 경로를 기본 주소 뒤에 붙인다.
+표의 경로를 본인이 설정한 `$baseUrl` 뒤에 붙인다. 예를 들어 PowerShell에서는 `"$baseUrl/seats"`다.
 
 | 태그 | 메서드 | 경로 | 인증 | 입력 | 정상 코드 |
 |---|---|---|---|---|---|
@@ -123,7 +161,7 @@ python -m venv .venv
 | 관리자 인증 | POST | `/admin/auth/login` | 없음 | JSON: username, password | 200 |
 | 관리자 인증 | GET | `/admin/auth/me` | AdminSession | 없음 | 200 |
 | 관리자 인증 | POST | `/admin/auth/logout` | AdminSession | 없음 | 200 |
-| 관리자 예약 관리 | PATCH | `/admin/reservations/{reservation_id}` | AdminSession | 경로: reservation_id; JSON: 본문 {} 가능; 선택: starts_at, ends_at, status | 200 |
+| 관리자 예약 관리 | PATCH | `/admin/reservations/{reservation_id}` | AdminSession | 경로: reservation_id; JSON: starts_at, ends_at, status 중 하나 이상 | 200 |
 | 관리자 예약 관리 | DELETE | `/admin/reservations/{reservation_id}` | AdminSession | 경로: reservation_id | 200 |
 | 관리자 예약 관리 | POST | `/admin/reservations` | AdminSession | JSON: seat_id, s_id, starts_at, ends_at | 201 |
 | 관리자 데이터 정리 | POST | `/admin/maintenance/cleanup` | AdminSession | JSON: 본문 {} 가능; 선택: dry_run, reservation_retention_days | 200 |
@@ -278,19 +316,23 @@ python -m venv .venv
 
 ## 10. PowerShell로 일반 사용자 흐름 따라 하기
 
-아래 명령은 실제 서버 DB에 사용자·예약을 저장한다. 서버 실행 후 다른 창에서 진행한다. 등록은 최초 한 번만 수행하고 이미 등록된 학번이면 로그인부터 실행한다.
+아래 명령은 설정한 서버 DB에 사용자·예약을 저장한다. 서버 실행 후 다른 창에서 2-2의 요청 PC 설정을 준비하고 진행한다. 등록은 최초 한 번만 수행하고 이미 등록된 학번이면 로그인부터 실행한다. 아래 JSON의 고정 ID·시각은 형식 설명용 예시이며 실행할 때는 개인 설정값과 실제 조회한 ID를 사용한다.
 
 ```powershell
-$baseUrl = 'http://127.0.0.1:8000'
-$registrationBody = @{ s_id='2026000001'; name='가상사용자'; college='공과대학'; department='컴퓨터학과' } | ConvertTo-Json
+$registrationBody = @{
+    s_id = $studentId
+    name = (Read-Host '등록할 이름')
+    college = (Read-Host '단과대학')
+    department = (Read-Host '학과')
+} | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri "$baseUrl/auth/register" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($registrationBody))
 ```
 
 로그인·조회·예약:
 
 ```powershell
-$baseUrl = 'http://127.0.0.1:8000'
-$login = Invoke-RestMethod -Method Post -Uri "$baseUrl/auth/login" -ContentType 'application/json' -Body '{"s_id":"2026000001"}'
+$userLoginBody = @{ s_id = $studentId } | ConvertTo-Json
+$login = Invoke-RestMethod -Method Post -Uri "$baseUrl/auth/login" -ContentType 'application/json' -Body $userLoginBody
 $userHeaders = @{ Authorization = "Bearer $($login.access_token)" }
 Invoke-RestMethod "$baseUrl/auth/me" -Headers $userHeaders
 
@@ -327,17 +369,19 @@ Invoke-RestMethod -Method Post -Uri "$baseUrl/auth/logout" -Headers $userHeaders
 관리자는 서버 PC에서 별도 생성한다. 공통 기본 계정·비밀번호나 관리자 가입 API는 없다.
 
 ```powershell
-cd 'C:\workspace\AI+X\Project\KOREA'
-& 'C:\workspace\AI+X\workspace\korea_api\.venv\Scripts\python.exe' -m api.admin create --username admin
+Set-Location -LiteralPath $projectRoot
+$adminUsername = Read-Host '생성할 관리자 ID'
+& $pythonExe -m api.admin create --username $adminUsername --database $dbPath
 ```
 
-입력 프롬프트에서 비밀번호를 두 번 입력한다. ID는 영문·숫자·밑줄·하이픈 3~32자, 비밀번호는 8~128자다. 같은 ID를 생성하면 기존 비밀번호를 변경하지 않고 실패한다. 서버와 다른 DB를 지정하려면 `--database` 또는 `KOREA_DB_PATH`를 사용한다. 비밀번호는 salt를 포함한 PBKDF2-HMAC-SHA256 해시로 저장한다.
+서버 PC에서 2-1 설정과 같은 Python·DB를 지정하여 실행한다. 새 창이면 해당 설정을 다시 준비한다. 비밀번호는 프롬프트에서 두 번 입력한다. ID는 영문·숫자·밑줄·하이픈 3~32자, 비밀번호는 8~128자다. 같은 ID를 생성하면 기존 비밀번호를 변경하지 않고 실패한다. 계정을 만든 DB와 서버가 사용하는 DB가 같아야 한다. 비밀번호는 salt를 포함한 PBKDF2-HMAC-SHA256 해시로 저장한다.
 
 관리자 로그인·확인:
 
+요청 PC에서 2-2의 `$baseUrl`, `$adminUsername`을 설정한 상태로 실행한다.
+
 ```powershell
-$baseUrl = 'http://127.0.0.1:8000'
-$credential = Get-Credential -UserName admin -Message '관리자 로그인'
+$credential = Get-Credential -UserName $adminUsername -Message '관리자 로그인'
 $adminLoginBody = @{ username=$credential.UserName; password=$credential.GetNetworkCredential().Password } | ConvertTo-Json
 $adminLogin = Invoke-RestMethod -Method Post -Uri "$baseUrl/admin/auth/login" -ContentType 'application/json; charset=utf-8' -Body ([Text.Encoding]::UTF8.GetBytes($adminLoginBody))
 $adminHeaders = @{ Authorization = "Bearer $($adminLogin.access_token)" }
@@ -361,8 +405,8 @@ Invoke-RestMethod "$baseUrl/admin/auth/me" -Headers $adminHeaders
 한국 시각을 변환하는 PowerShell 예시:
 
 ```powershell
-$startAt = [DateTimeOffset]::Parse('2026-11-12T10:00:00+09:00').ToUnixTimeSeconds()
-$endAt = [DateTimeOffset]::Parse('2026-11-12T11:00:00+09:00').ToUnixTimeSeconds()
+$startAt = [DateTimeOffset]::Parse((Read-Host '시작 시각(예: 2030-01-01T10:00:00+09:00)')).ToUnixTimeSeconds()
+$endAt = [DateTimeOffset]::Parse((Read-Host '종료 시각(UTC 오프셋 포함)')).ToUnixTimeSeconds()
 ```
 
 ### 시각·상태 수정
@@ -402,11 +446,22 @@ $endAt = [DateTimeOffset]::Parse('2026-11-12T11:00:00+09:00').ToUnixTimeSeconds(
 
 ## 14. 서버 시각 판정·프론트 연결 설정
 
-기본 DB는 현재 작업 폴더와 관계없이 KOREA의 `library.db`다. 다른 경로는 서버 실행 전 같은 PowerShell 창에서 지정한다.
+서버 PC에서는 2-1의 `$dbPath`를 `KOREA_DB_PATH`로 지정한다. 미설정 시 기본 DB는 현재 작업 폴더와 관계없이 프로젝트 루트의 `library.db`다. 다른 DB를 쓸 때는 `$dbPath`와 환경변수를 함께 바꾼다.
 
 ```powershell
-$env:KOREA_DB_PATH = 'C:\workspace\AI+X\workspace\demo_library.db'
-$env:KOREA_CORS_ORIGINS = 'http://localhost:5173,http://127.0.0.1:5173'
+$dbPath = Read-Host '사용할 DB 파일의 전체 경로'
+$env:KOREA_DB_PATH = $dbPath
+```
+
+다른 Origin의 프론트에서 사용할 때만 다음을 설정한다. 프로토콜·호스트·포트까지 입력하고 경로는 붙이지 않는다. 여러 주소는 쉼표로 구분한다.
+
+```powershell
+$frontendOrigins = Read-Host '허용할 프론트 Origin(쉼표 구분, 없으면 Enter)'
+if ([string]::IsNullOrWhiteSpace($frontendOrigins)) {
+    Remove-Item Env:KOREA_CORS_ORIGINS -ErrorAction SilentlyContinue
+} else {
+    $env:KOREA_CORS_ORIGINS = $frontendOrigins
+}
 ```
 
 다른 DB 파일이 없으면 초기화 도구로 최초 한 번 생성해야 하며 서버가 자동 생성하지 않는다. `--database`·`--output`을 생략한 관리 명령도 기본 DB 환경변수를 따른다. CORS는 지정한 Origin에 GET·POST·PATCH·DELETE와 `Content-Type`, `Authorization`을 허용한다. 미설정 시 CORS 미들웨어를 추가하지 않는다.
@@ -442,33 +497,4 @@ $env:KOREA_CORS_ORIGINS = 'http://localhost:5173,http://127.0.0.1:5173'
 
 Swagger의 `INVALID_SESSION`은 새 로그인 응답의 토큰 값만 올바른 DemoSession/AdminSession에 다시 입력해 확인한다. 로그아웃한 토큰의 재사용은 실패하는 것이 정상이다.
 
-패키지·api 모듈을 찾지 못하면 KOREA 루트에서 패키지를 설치한 Python으로 실행했는지 확인한다. 포트 사용 중이면 기존 서버를 종료하거나 `--port 8001`로 실행하고 호출 주소도 바꾼다. DB 호환 오류는 경로·환경변수·마이그레이션을 확인한다. 기존 DB를 삭제하거나 초기화해서 해결하지 않는다.
-
-## 16. 파일 구성·검증·관련 자료
-
-| 파일·구조 | 역할 |
-|---|---|
-| `api/main.py`, `api/tags.py` | API 연결·공통 오류·CORS·시작/종료·Swagger 태그 |
-| `api/auth.py`, `api/me.py` | 사용자 등록·학번 세션·내 정보·내 예약 |
-| `api/admin.py`, `api/maintenance.py` | 관리자 계정·세션·예약 CRUD·만료 정리 |
-| `api/service.py`, `api/models.py` | 조회·예약 처리·입력/응답 모델 |
-| `api/timing.py`, `api/clock.py` | 공통 시간·안내 계산과 주기 재판정 |
-| `api/db.py`, `api/migrations.py` | DB 연결·신규 생성·호환 검사·백업 업그레이드 |
-| `schema.sql`, `seed.sql` | 최신 SQLite 구조·초기 위치/좌석 |
-| `api/schema_v1_3.sql` | 이전 구조 비교용 자료. 직접 실행해 되돌리는 파일이 아님 |
-| `tests/` | 예약·인증·프로필·관리자·정리·시간 작업 검증 |
-
-위 구성은 `C:\workspace\AI+X\Project\KOREA`를 기준으로 한다. 사용자는 `users`, `user_profiles`, 세션은 `auth_sessions`에 저장하고 예약자는 `reservation_owners`로 연결한다. 관리자 계정·세션은 별도다. 이동 이력과 시간 판정 캐시는 예약에 연결되어 있다.
-
-최근 기능 검증은 전체 테스트 196개·임시 HTTP 요청 60건 통과였다. 이후 태그 변경은 태그 외 OpenAPI 정의가 같음을 확인했다. 이 설명서 작성에서는 현재 코드·OpenAPI·기존 DB 시작 검사를 대조했으며 서버를 시작하거나 실제 예약·프로필·정리 요청을 실행하지 않았다. 전체 테스트도 반복하지 않았다.
-
-- [현재 코드의 OpenAPI JSON](C:/workspace/AI+X/workspace/예약정보_API_OpenAPI.json)
-- [사용자·관리자 사용 흐름 그림](C:/workspace/AI+X/workspace/API_사용흐름도.png)
-- [태그별 경로 안내](C:/workspace/AI+X/workspace/API_태그_분류_안내.md)
-- [전체 태그 분류 그림](C:/workspace/AI+X/workspace/API_태그_분류도.png)
-- [사용자 등록·프로필 흐름](C:/workspace/AI+X/workspace/사용자등록_프로필_API_흐름도.png)
-- [예약 관리·시간 조회 흐름](C:/workspace/AI+X/workspace/예약관리_시간조회_API_흐름도.png)
-- [기능 검증 기록](C:/workspace/AI+X/workspace/reservation_clock_api/verification_report.json)
-- [태그 변경 검증 기록](C:/workspace/AI+X/workspace/api_tag_cleanup/verification_report.json)
-
-설명서는 workspace에 별도로 저장하며 이 작업에서 KOREA 코드·DB·README·Git 브랜치는 변경하지 않았다.
+패키지·api 모듈을 찾지 못하면 `$projectRoot`에서 설정한 `$pythonExe`로 실행했는지 확인한다. 포트가 사용 중이면 기존 서버를 종료하거나 `$apiPort`를 바꾸고, 요청 PC의 `$baseUrl`에도 같은 포트를 사용한다. DB 호환 오류는 경로·환경변수·마이그레이션을 확인한다. 기존 DB를 삭제하거나 초기화해서 해결하지 않는다.
