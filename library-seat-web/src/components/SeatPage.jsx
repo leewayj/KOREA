@@ -4,7 +4,7 @@ import SeatMap from './SeatMap'
 import './SeatPage.css'
 import './seat-change.css'
 
-export default function SeatPage({ room, menuOpen, selectedSeat, onSelect, mySeat, previousSeat, previousRoom, onReserve, onRefresh, changeMode = false, onContinue }) {
+export default function SeatPage({ room, selectedSeat, onSelect, mySeat, previousSeat, previousRoom, onReserve, onRefresh, changeMode = false, onContinue }) {
   const dialog = useRef(null)
   const trigger = useRef(null)
   const isSelecting = selectedSeat !== null
@@ -41,7 +41,7 @@ export default function SeatPage({ room, menuOpen, selectedSeat, onSelect, mySea
 
   return (
     <>
-      <main className={`seat-page${changeMode ? ' seat-change-page' : ''}`} aria-label={`${room.name} 좌석 배치도`} inert={menuOpen || isSelecting}>
+      <main className={`seat-page${changeMode ? ' seat-change-page' : ''}`} aria-label={`${room.name} 좌석 배치도`} inert={isSelecting}>
         {changeMode && <h2 className="seat-change-title">변경할 좌석을 선택해 주세요</h2>}
         <div className="seat-room-heading">
           <h2>{room.name}</h2>
@@ -63,7 +63,7 @@ export default function SeatPage({ room, menuOpen, selectedSeat, onSelect, mySea
         )}
       </main>
       {isSelecting && <div className={`seat-modal-backdrop${changeMode ? ' change-backdrop' : ''}`} aria-hidden="true" onClick={() => onSelect(null)} />}
-      <footer className="seat-footer" inert={menuOpen || isSelecting}>
+      <footer className="seat-footer" inert={isSelecting}>
         <p id="seat-scroll-help">{changeMode ? '좌우로 밀어 전체 72석을 확인하세요' : '좌우로 밀어 전체 좌석을 확인하세요.'}</p>
         <Button isDisabled={!changeMode} className={`seat-footer-button${changeMode ? ' ready' : ''}`} onPress={onContinue}>{changeMode ? '내 예약 정보' : '좌석을 선택해 주세요'}</Button>
       </footer>

@@ -40,20 +40,6 @@
 .available strong { color: var(--blue-main); }
 .room-card:active { background: #f0f7ff; }
 
-.menu-backdrop { position: absolute; z-index: 1; inset: 64px 0 0; background: rgb(24 50 75 / 10%); }
-.shortcut-menu { position: absolute; z-index: 2; top: 72px; left: 16px; right: 16px; max-height: calc(100% - 88px); overflow-y: auto; overscroll-behavior-y: contain; padding: 16px; border-radius: 20px; background: white; box-shadow: inset 0 0 0 1px var(--divider), 0 8px 24px rgb(0 33 64 / 12%); }
-.shortcut-heading { display: flex; align-items: center; justify-content: space-between; height: 24px; margin-bottom: 12px; }
-.shortcut-heading h2 { font-size: 14px; line-height: 21px; font-weight: 700; color: var(--blue-deep); }
-.close-button { display: grid; place-items: center; position: relative; border: 0; padding: 0; background: transparent; }
-.close-button::after { content: ''; position: absolute; inset: -13px; }
-.close-button img { display: block; }
-.shortcut-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.shortcut-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; height: 88px; padding: 0; border: 1px solid var(--divider); border-radius: 12px; background: white; color: var(--blue-deep); font-size: 14px; font-weight: 500; line-height: 21px; }
-.shortcut-tile img { display: block; flex-shrink: 0; }
-.shortcut-tile.active { border: 1.5px solid var(--blue-main); color: var(--blue-main); background: #e8f3fc; font-weight: 700; }
-.shortcut-tile.home-shortcut.active { border-width: 1px; }
-.shortcut-tile.seats-shortcut { border-width: 1.5px; }
-.shortcut-tile:active { filter: brightness(.96); }
 .notice { position: fixed; z-index: 3; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); width: min(327px, calc(100% - 48px)); transform: translateX(-50%); padding: 14px 16px; border-radius: 12px; background: #18324b; color: white; font-size: 13px; line-height: 21px; text-align: center; opacity: 0; pointer-events: none; }
 .notice.visible { opacity: 1; }
 
@@ -61,5 +47,4 @@
   .navigation { gap: 10px; }
   .room-list { padding: 16px; }
   .room-name { font-size: 16px; }
-  .shortcut-menu { padding-inline: 16px; }
 }
