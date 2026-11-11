@@ -48,9 +48,9 @@ def validate(path: Path):
         required = ('floors', 'rooms', 'seats', 'reservations', 'seat_occupancy',
                     'reservation_status', 'seat_status', 'reservations_validate_insert',
                     'reservations_validate_update', 'reservations_stamp_status', 'seats_initialize_occupancy',
-                    'reservation_moves', 'reservations_record_move')
+                    'reservation_moves', 'reservations_record_move', 'users', 'auth_sessions')
         if not all(name in definitions for name in required):
-            raise RuntimeError('Incompatible database: seat-move schema is required. Back up and run python -m api.migrations --backup <backup.db>.')
+            raise RuntimeError('Incompatible database: seat-move schema and ID-auth schema are required. Back up and run python -m api.migrations --backup <backup.db>.')
         if ("'CONFIRMED'" not in definitions['reservations']
                 or 'starts_at is immutable' not in definitions['reservations_validate_update']
                 or 'confirmed_at is immutable' not in definitions['reservations_validate_update']

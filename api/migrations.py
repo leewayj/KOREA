@@ -1,4 +1,4 @@
-"""Backed-up, additive seat-move schema migration. No reservation rows are rewritten."""
+"""Backed-up, additive seat-move and ID-auth migration. Reservation rows are preserved."""
 import argparse
 import json
 import sqlite3
@@ -6,8 +6,10 @@ from pathlib import Path
 
 from .db import ROOT, default_path
 
-OBJECTS = ('reservation_moves', 'reservation_moves_reservation',
-           'reservations_validate_insert', 'reservations_validate_update', 'reservations_record_move')
+SEAT_OBJECTS = ('reservation_moves', 'reservation_moves_reservation',
+                'reservations_validate_insert', 'reservations_validate_update', 'reservations_record_move')
+AUTH_OBJECTS = ('users', 'auth_sessions', 'auth_sessions_user', 'auth_sessions_expiry')
+OBJECTS = SEAT_OBJECTS + AUTH_OBJECTS
 
 
 def definitions(db):
@@ -33,8 +35,12 @@ def upgrade(path: Path, backup: Path):
         current = definitions(db)
         if all(normalize(current.get(name)) == normalize(expected[name]) for name in OBJECTS):
             return {'status': 'already_current', 'backup': None}
-        if 'reservation_moves' in current or 'reservations_record_move' in current:
+        seat_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in SEAT_OBJECTS)
+        auth_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in AUTH_OBJECTS)
+        if not seat_current and ('reservation_moves' in current or 'reservations_record_move' in current):
             raise RuntimeError('Partial or different seat-move schema found; inspect before migration.')
+        if not auth_current and any(name in current for name in AUTH_OBJECTS):
+            raise RuntimeError('Partial or different ID-auth schema found; inspect before migration.')
         if not all(name in current for name in ('reservations', 'seats', 'reservations_validate_insert', 'reservations_validate_update')):
             raise RuntimeError('Compatible KOREA database is required.')
         if db.execute('PRAGMA foreign_key_check').fetchall():
@@ -50,12 +56,16 @@ def upgrade(path: Path, backup: Path):
             raise
         try:
             db.execute('BEGIN IMMEDIATE')
-            db.execute(expected['reservation_moves'])
-            db.execute(expected['reservation_moves_reservation'])
-            for name in ('reservations_validate_insert', 'reservations_validate_update'):
-                db.execute(f'DROP TRIGGER {name}')
-                db.execute(expected[name])
-            db.execute(expected['reservations_record_move'])
+            if not seat_current:
+                db.execute(expected['reservation_moves'])
+                db.execute(expected['reservation_moves_reservation'])
+                for name in ('reservations_validate_insert', 'reservations_validate_update'):
+                    db.execute(f'DROP TRIGGER {name}')
+                    db.execute(expected[name])
+                db.execute(expected['reservations_record_move'])
+            if not auth_current:
+                for name in AUTH_OBJECTS:
+                    db.execute(expected[name])
             after = definitions(db)
             if not all(normalize(after.get(name)) == normalize(expected[name]) for name in OBJECTS):
                 raise RuntimeError('Migration schema verification failed.')

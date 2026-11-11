@@ -10,6 +10,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException
 
+from .auth import router as auth_router
+
 from .db import default_path, validate
 from .errors import APIError
 from .models import (EffectiveStatus, ErrorResponse, Floor, Identifier,
@@ -125,7 +127,7 @@ def create_app(database_path: Path | None = None) -> FastAPI:
         validate(path)
         yield
 
-    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.2.0', lifespan=lifespan,
+    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.3.0', lifespan=lifespan,
                   description='관리자 테스트용 API. 시간은 UTC Unix 초이며, 실제 착석자 인증은 하지 않습니다.')
     app.state.service = Service(path)
 
@@ -134,6 +136,8 @@ def create_app(database_path: Path | None = None) -> FastAPI:
         if error.status >= 500:
             logging.getLogger(__name__).error('API processing error: %s', error.code, exc_info=error.__cause__)
         headers = {'Retry-After': '1'} if error.status == 503 else None
+        if error.status == 401:
+            headers = {'WWW-Authenticate': 'Bearer', 'Cache-Control': 'no-store'}
         return JSONResponse(status_code=error.status, headers=headers,
                             content={'error': {'code': error.code, 'message': error.message}})
 
@@ -156,8 +160,9 @@ def create_app(database_path: Path | None = None) -> FastAPI:
     origins = [value.strip() for value in os.getenv('KOREA_CORS_ORIGINS', '').split(',') if value.strip()]
     if origins:
         app.add_middleware(CORSMiddleware, allow_origins=origins,
-                           allow_methods=['GET', 'POST', 'PATCH'], allow_headers=['Content-Type'])
+                           allow_methods=['GET', 'POST', 'PATCH'], allow_headers=['Content-Type', 'Authorization'])
     app.include_router(router)
+    app.include_router(auth_router)
     return app
 
 

@@ -1,5 +1,23 @@
 PRAGMA foreign_keys = ON;
 
+-- Demonstration identity only: an ID is not proof of real student identity.
+CREATE TABLE users (
+    s_id TEXT PRIMARY KEY NOT NULL
+        CHECK (typeof(s_id) = 'text' AND length(s_id) = 10 AND s_id NOT GLOB '*[^0-9]*'),
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()) CHECK (typeof(created_at) = 'integer')
+);
+
+CREATE TABLE auth_sessions (
+    token_hash TEXT PRIMARY KEY NOT NULL
+        CHECK (length(token_hash) = 64 AND token_hash NOT GLOB '*[^0-9a-f]*'),
+    s_id TEXT NOT NULL REFERENCES users(s_id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL CHECK (typeof(created_at) = 'integer'),
+    expires_at INTEGER NOT NULL CHECK (typeof(expires_at) = 'integer'),
+    CHECK (created_at < expires_at)
+);
+CREATE INDEX auth_sessions_user ON auth_sessions(s_id);
+CREATE INDEX auth_sessions_expiry ON auth_sessions(expires_at);
+
 CREATE TABLE floors (
     id INTEGER PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,

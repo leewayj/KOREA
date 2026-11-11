@@ -12,6 +12,28 @@ class Input(BaseModel):
     model_config = ConfigDict(extra='forbid')
 
 
+class LoginRequest(Input):
+    s_id: Annotated[str, Field(strict=True, min_length=10, max_length=10, pattern=r'^[0-9]{10}$')]
+
+
+class UserIdentity(BaseModel):
+    s_id: str
+    created_at: int
+    session_expires_at: int
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: Literal['bearer'] = 'bearer'
+    expires_in: int
+    expires_at: int
+    user: UserIdentity
+
+
+class LogoutResponse(BaseModel):
+    message: str
+
+
 class ReservationCreate(Input):
     seat_id: PositiveInteger = Field(description='전역 고유 좌석 ID. 방 안의 표시 번호와 다릅니다.')
     def_time: PositiveInteger | None = Field(default=None, description='총 이용시간(초). 생략 또는 null이면 DB 기본 21600초.')
