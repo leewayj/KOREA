@@ -162,6 +162,13 @@ class Reservation(BaseModel):
     notice_message: str | None
 
 
+class SeatHistory(BaseModel):
+    id: int
+    s_id: str
+    seat_id: int
+    used_at: int = Field(description='예약 시작 또는 좌석 이동 시각. UTC Unix 초. 원본 예약 삭제 후에도 유지.')
+
+
 class NextReservation(BaseModel):
     id: int
     starts_at: int

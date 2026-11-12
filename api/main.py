@@ -145,7 +145,7 @@ def create_app(database_path: Path | None = None) -> FastAPI:
             if worker.thread is not None:
                 worker.stop()
 
-    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.9.0', lifespan=lifespan, openapi_tags=OPENAPI_TAGS,
+    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.11.0', lifespan=lifespan, openapi_tags=OPENAPI_TAGS,
                   description='관리자 테스트용 API. 시간은 UTC Unix 초이며, 실제 착석자 인증은 하지 않습니다.')
     app.state.service = Service(path)
 

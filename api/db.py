@@ -23,6 +23,9 @@ def connection(path: Path, write=False):
         db.execute('PRAGMA busy_timeout = 5000')
         if write:
             db.execute('BEGIN IMMEDIATE')
+            # Capture due events before edits/deletion can remove their sources.
+            from .seat_history import record
+            record(db)
         else:
             db.execute('BEGIN')
         yield db
@@ -60,7 +63,8 @@ def validate(path: Path):
                     'admins', 'admin_sessions', 'reservation_admin_context', 'reservation_owners',
                     'reservation_owners_one_active', 'reservation_owners_immutable', 'reservations_one_active_user',
                     'user_profiles', 'reservation_admin_insert_context',
-                    'reservation_time_states', 'reservation_clock_lease')
+                    'reservation_time_states', 'reservation_clock_lease',
+                    'user_seat_history', 'reservation_history_progress')
         if not all(name in definitions for name in required):
             raise RuntimeError('Incompatible database: seat-move schema, ID-auth schema, admin schema and reservation ownership schema are required. Back up and run python -m api.migrations --backup <backup.db>.')
         if ("'CONFIRMED'" not in definitions['reservations']

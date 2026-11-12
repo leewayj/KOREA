@@ -31,6 +31,8 @@ def project(row, now):
 
 def reconcile(db, now=None):
     now = db.execute('SELECT unixepoch()').fetchone()[0] if now is None else now
+    from .seat_history import record
+    record(db, now)
     rows = db.execute('SELECT * FROM reservations').fetchall()
     for row in rows:
         value = project(row, now)

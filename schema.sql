@@ -133,6 +133,24 @@ CREATE TABLE reservation_moves (
 );
 CREATE INDEX reservation_moves_reservation ON reservation_moves(reservation_id, id);
 
+-- Independent reservation/move-based usage log. Deleting reservations must not
+-- delete this log. There is deliberately no reservation foreign key here.
+CREATE TABLE user_seat_history (
+    id INTEGER PRIMARY KEY,
+    s_id TEXT NOT NULL REFERENCES users(s_id),
+    seat_id INTEGER NOT NULL REFERENCES seats(id),
+    used_at INTEGER NOT NULL CHECK (typeof(used_at) = 'integer')
+);
+CREATE INDEX user_seat_history_user_time
+    ON user_seat_history(s_id, used_at DESC, id DESC);
+
+-- Ephemeral write cursor, not a link from historical entries to reservations.
+-- Cascades when the source reservation is removed, leaving history intact.
+CREATE TABLE reservation_history_progress (
+    reservation_id INTEGER PRIMARY KEY REFERENCES reservations(id) ON DELETE CASCADE,
+    last_move_id INTEGER NOT NULL DEFAULT 0 CHECK (last_move_id >= 0)
+);
+
 -- Transaction-local permission marker. The server removes it before commit;
 -- BEGIN IMMEDIATE serializes writers, and rollback removes it on failure.
 CREATE TABLE reservation_admin_context (

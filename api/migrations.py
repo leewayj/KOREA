@@ -14,7 +14,8 @@ OWNER_OBJECTS = ('reservation_owners', 'reservation_owners_user')
 ACTIVE_OBJECTS = ('reservation_owners_one_active', 'reservation_owners_immutable', 'reservations_one_active_user')
 PROFILE_OBJECTS = ('user_profiles',)
 TIME_OBJECTS = ('reservation_admin_insert_context', 'reservation_time_states', 'reservation_clock_lease')
-OBJECTS = SEAT_OBJECTS + AUTH_OBJECTS + ADMIN_OBJECTS + OWNER_OBJECTS + ACTIVE_OBJECTS + PROFILE_OBJECTS + TIME_OBJECTS + ('reservation_status',)
+HISTORY_OBJECTS = ('user_seat_history', 'user_seat_history_user_time', 'reservation_history_progress')
+OBJECTS = SEAT_OBJECTS + AUTH_OBJECTS + ADMIN_OBJECTS + OWNER_OBJECTS + ACTIVE_OBJECTS + PROFILE_OBJECTS + TIME_OBJECTS + HISTORY_OBJECTS + ('reservation_status',)
 
 
 def definitions(db):
@@ -50,6 +51,9 @@ def upgrade(path: Path, backup: Path):
         active_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in ACTIVE_OBJECTS)
         profile_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in PROFILE_OBJECTS)
         time_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in TIME_OBJECTS)
+        history_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in HISTORY_OBJECTS)
+        if not history_current and any(name in current for name in HISTORY_OBJECTS):
+            raise RuntimeError('Partial or different seat history schema found; inspect before migration.')
         if not seat_current and ('reservation_moves' in current or 'reservations_record_move' in current):
             raise RuntimeError('Partial or different seat-move schema found; inspect before migration.')
         if not auth_current and any(name in current for name in AUTH_OBJECTS):
@@ -112,6 +116,11 @@ def upgrade(path: Path, backup: Path):
             if not profile_current:
                 for name in PROFILE_OBJECTS:
                     db.execute(expected[name])
+            if not history_current:
+                for name in HISTORY_OBJECTS:
+                    db.execute(expected[name])
+                from .seat_history import record
+                record(db)
             if normalize(current.get('reservation_status')) != normalize(expected['reservation_status']):
                 db.execute('DROP VIEW reservation_status')
                 db.execute(expected['reservation_status'])

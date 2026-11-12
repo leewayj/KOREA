@@ -122,6 +122,14 @@ class Service:
                 ORDER BY r.id DESC LIMIT ? OFFSET ?
             ''', (s_id, now, now, limit, offset))]
 
+    def my_seat_history(self, s_id, limit=100, offset=0):
+        # Materialize due starts even if the periodic worker is disabled or delayed.
+        with connection(self.path, write=True) as db:
+            return [dict(row) for row in db.execute('''
+                SELECT id,s_id,seat_id,used_at FROM user_seat_history
+                WHERE s_id=? ORDER BY used_at DESC,id DESC LIMIT ? OFFSET ?
+            ''', (s_id, limit, offset))]
+
     def duration(self, reservation_id, seconds, additional=False):
         with connection(self.path, write=True) as db:
             row = reservation(db, reservation_id)
