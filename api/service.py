@@ -107,7 +107,13 @@ class Service:
             if def_time is None:
                 cursor = db.execute('INSERT INTO reservations(seat_id) VALUES (?)', (seat_id,))
             else:
-                cursor = db.execute('INSERT INTO reservations(seat_id, def_time) VALUES (?, ?)', (seat_id, def_time))
+                # The guard and starts_at's default use the same SQLite statement
+                # clock, so a second changing between queries cannot overflow.
+                cursor = db.execute('''INSERT INTO reservations(seat_id, def_time)
+                    SELECT ?, ? WHERE ? <= 9223372036854775807 - unixepoch()''',
+                    (seat_id, def_time, def_time))
+                if cursor.rowcount == 0:
+                    raise APIError(422, 'INVALID_DURATION', '이용시간이 저장 가능한 범위를 초과합니다.')
             db.execute('INSERT INTO reservation_owners(reservation_id,s_id) VALUES(?,?)',
                        (cursor.lastrowid, owner_s_id))
             return reservation(db, cursor.lastrowid)
