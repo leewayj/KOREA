@@ -1,25 +1,26 @@
-"""Backed-up seat-move, ID-auth and administrator migration; existing rows are preserved."""
+"""Backed-up schema migration; create dependency tables before other objects."""
 import argparse
 import json
+import hashlib
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 from .db import ROOT, default_path
+from .schema_objects import load_schema, read_objects
 
-SEAT_OBJECTS = ('reservation_moves', 'reservation_moves_reservation',
-                'reservations_validate_insert', 'reservations_validate_update', 'reservations_record_move')
-AUTH_OBJECTS = ('users', 'auth_sessions', 'auth_sessions_user', 'auth_sessions_expiry')
-ADMIN_OBJECTS = ('admins', 'admin_sessions', 'admin_sessions_expiry', 'reservation_admin_context')
-OWNER_OBJECTS = ('reservation_owners', 'reservation_owners_user')
-ACTIVE_OBJECTS = ('reservation_owners_one_active', 'reservation_owners_immutable', 'reservations_one_active_user')
-PROFILE_OBJECTS = ('user_profiles',)
-TIME_OBJECTS = ('reservation_admin_insert_context', 'reservation_time_states', 'reservation_clock_lease')
-HISTORY_OBJECTS = ('user_seat_history', 'user_seat_history_user_time', 'reservation_history_progress')
-OBJECTS = SEAT_OBJECTS + AUTH_OBJECTS + ADMIN_OBJECTS + OWNER_OBJECTS + ACTIVE_OBJECTS + PROFILE_OBJECTS + TIME_OBJECTS + HISTORY_OBJECTS + ('reservation_status',)
+# These tables contain the source reservation/location data; never reconstruct
+# them as empty tables when upgrading a damaged database.
+CORE_TABLES = ('floors', 'rooms', 'seats', 'reservations')
+
+# Exact normalized SQL digests of the supported pre-seat-move trigger version.
+# Keep legacy compatibility explicit; never replace arbitrary modified triggers.
+PRE_MOVE_RULE_HASHES = {'reservations_validate_insert': 'c2181554b32ce61ee12b1fabd2bd417a3c483af10aed018ca583508e1ae155db',
+ 'reservations_validate_update': '9c6d30d344e5542fccef1110d25246584c9d6a51123524837a632b674d1aed66'}
 
 
 def definitions(db):
-    return dict(db.execute('SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL'))
+    return {name: obj.sql for name, obj in read_objects(db).items()}
 
 
 def normalize(sql):
@@ -32,100 +33,78 @@ def upgrade(path: Path, backup: Path):
         raise FileNotFoundError(path)
     if path == backup:
         raise ValueError('Backup and database paths must be different.')
-    with sqlite3.connect(':memory:') as template:
-        template.executescript((ROOT / 'schema.sql').read_text(encoding='utf-8'))
-        expected = definitions(template)
-    with sqlite3.connect(':memory:') as template:
-        template.executescript((ROOT / 'api' / 'schema_v1_3.sql').read_text(encoding='utf-8'))
-        legacy = definitions(template)
-    db = sqlite3.connect(path.as_uri() + '?mode=rw', uri=True, timeout=5)
+    latest = load_schema(ROOT/'schema.sql')
+    expected = {name: obj.sql for name, obj in latest.items()}
+    legacy = {name: obj.sql for name, obj in load_schema(ROOT/'api/schema_v1_3.sql').items()}
+    db = sqlite3.connect(path.as_uri()+'?mode=rw', uri=True, timeout=5)
     try:
         db.execute('PRAGMA foreign_keys=ON')
         current = definitions(db)
-        if all(normalize(current.get(name)) == normalize(expected[name]) for name in OBJECTS):
-            return {'status': 'already_current', 'backup': None}
-        seat_current = all(normalize(current.get(name)) in (normalize(expected[name]), normalize(legacy[name])) for name in SEAT_OBJECTS)
-        auth_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in AUTH_OBJECTS)
-        admin_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in ADMIN_OBJECTS)
-        owner_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in OWNER_OBJECTS)
-        active_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in ACTIVE_OBJECTS)
-        profile_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in PROFILE_OBJECTS)
-        time_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in TIME_OBJECTS)
-        history_current = all(normalize(current.get(name)) == normalize(expected[name]) for name in HISTORY_OBJECTS)
-        if not history_current and any(name in current for name in HISTORY_OBJECTS):
-            raise RuntimeError('Partial or different seat history schema found; inspect before migration.')
-        if not seat_current and ('reservation_moves' in current or 'reservations_record_move' in current):
-            raise RuntimeError('Partial or different seat-move schema found; inspect before migration.')
-        if not auth_current and any(name in current for name in AUTH_OBJECTS):
-            raise RuntimeError('Partial or different ID-auth schema found; inspect before migration.')
-        if not admin_current and any(name in current for name in ADMIN_OBJECTS):
-            raise RuntimeError('Partial or different admin schema found; inspect before migration.')
-        if not owner_current and any(name in current for name in OWNER_OBJECTS):
-            raise RuntimeError('Partial or different reservation ownership schema found; inspect before migration.')
-        if not active_current and any(name in current for name in ACTIVE_OBJECTS):
-            raise RuntimeError('Partial or different single-active schema found; inspect before migration.')
-        if not profile_current and any(name in current for name in PROFILE_OBJECTS):
-            raise RuntimeError('Partial or different user profile schema found; inspect before migration.')
-        if not time_current and any(name in current for name in TIME_OBJECTS):
-            raise RuntimeError('Partial or different reservation clock schema found; inspect before migration.')
+        missing_core = [name for name in CORE_TABLES if name not in current]
+        if missing_core:
+            raise RuntimeError('Compatible KOREA database is required; missing source tables: '
+                               + ', '.join(missing_core))
+        for name, obj in latest.items():
+            if name not in current or normalize(current[name]) == normalize(obj.sql):
+                continue
+            known_old = (obj.kind in ('trigger', 'view') and (
+                (name in legacy and normalize(current[name]) == normalize(legacy[name]))
+                or hashlib.sha256(normalize(current[name]).encode()).hexdigest()
+                    == PRE_MOVE_RULE_HASHES.get(name)))
+            if not known_old:
+                raise RuntimeError('Partial or different schema found for object: '
+                                   + name + '; inspect before migration.')
         if 'reservation_owners' in current and db.execute('''
             SELECT 1 FROM reservation_owners owner JOIN reservations r ON r.id=owner.reservation_id
             WHERE r.status='CONFIRMED' AND r.ends_at>unixepoch()
             GROUP BY owner.s_id HAVING COUNT(*)>1 LIMIT 1
         ''').fetchone():
             raise RuntimeError('Existing users have multiple active reservations. Resolve these reservations before migration; no data was changed.')
-        if normalize(current.get('reservation_status')) not in (normalize(expected['reservation_status']), normalize(legacy['reservation_status'])):
-            raise RuntimeError('Different reservation status view found; inspect before migration.')
-        if not all(name in current for name in ('reservations', 'seats', 'reservations_validate_insert', 'reservations_validate_update')):
-            raise RuntimeError('Compatible KOREA database is required.')
-        if db.execute('PRAGMA foreign_key_check').fetchall():
-            raise RuntimeError('Foreign key violations must be resolved before migration.')
-        # Exclusive creation: never replace an existing backup.
+        if all(normalize(current.get(name)) == normalize(sql) for name, sql in expected.items()):
+            if db.execute('PRAGMA foreign_key_check').fetchall():
+                raise RuntimeError('Foreign key violations must be resolved before migration.')
+            return {'status': 'already_current', 'backup': None}
+        # Independent history cannot be unambiguously linked back to reservations.
+        # Refuse to guess a lost cursor when retained history is nonempty.
+        if ('reservation_history_progress' not in current and 'user_seat_history' in current
+                and db.execute('SELECT 1 FROM user_seat_history LIMIT 1').fetchone()):
+            raise RuntimeError('Cannot safely rebuild missing reservation_history_progress with existing independent history; inspect before migration.')
         with backup.open('xb'):
             pass
         try:
-            with sqlite3.connect(backup) as copy:
+            with closing(sqlite3.connect(backup)) as copy:
                 db.backup(copy)
         except Exception:
             backup.unlink(missing_ok=True)
             raise
         try:
             db.execute('BEGIN IMMEDIATE')
-            if not seat_current:
-                db.execute(expected['reservation_moves'])
-                db.execute(expected['reservation_moves_reservation'])
-            if not admin_current:
-                for name in ADMIN_OBJECTS:
-                    db.execute(expected[name])
-            if not time_current:
-                for name in TIME_OBJECTS:
-                    db.execute(expected[name])
-            for name in ('reservations_validate_insert', 'reservations_validate_update', 'reservations_record_move'):
-                if normalize(current.get(name)) != normalize(expected[name]):
-                    db.execute(f'DROP TRIGGER IF EXISTS {name}')
-                    db.execute(expected[name])
-            if not auth_current:
-                for name in AUTH_OBJECTS:
-                    db.execute(expected[name])
-            if not owner_current:
-                for name in OWNER_OBJECTS:
-                    db.execute(expected[name])
-            if not active_current:
-                for name in ACTIVE_OBJECTS:
-                    db.execute(expected[name])
-            if not profile_current:
-                for name in PROFILE_OBJECTS:
-                    db.execute(expected[name])
-            if not history_current:
-                for name in HISTORY_OBJECTS:
-                    db.execute(expected[name])
+            # No hard-coded feature table lists: every current schema table is
+            # available before indexes, views, or triggers are installed.
+            for kind in ('table', 'index', 'view', 'trigger'):
+                for name, obj in latest.items():
+                    if obj.kind != kind:
+                        continue
+                    if name not in current:
+                        db.execute(obj.sql)
+                    elif normalize(current[name]) != normalize(obj.sql):
+                        # The preflight permits only recognized older triggers/views.
+                        quoted = '"'+name.replace('"', '""')+'"'
+                        db.execute(f'DROP {kind.upper()} {quoted}')
+                        db.execute(obj.sql)
+            if 'seat_occupancy' not in current:
+                db.execute('INSERT INTO seat_occupancy(seat_id) SELECT id FROM seats')
+            if 'reservation_moves' not in current:
+                db.execute('UPDATE reservation_history_progress SET last_move_id=0')
+            if 'user_seat_history' not in current:
+                db.execute('DELETE FROM reservation_history_progress')
                 from .seat_history import record
                 record(db)
-            if normalize(current.get('reservation_status')) != normalize(expected['reservation_status']):
-                db.execute('DROP VIEW reservation_status')
-                db.execute(expected['reservation_status'])
+            elif 'reservation_history_progress' not in current:
+                from .seat_history import record
+                record(db)
             after = definitions(db)
-            if not all(normalize(after.get(name)) == normalize(expected[name]) for name in OBJECTS):
+            if not all(normalize(after.get(name)) == normalize(sql) for name, sql in expected.items()):
                 raise RuntimeError('Migration schema verification failed.')
             if db.execute('PRAGMA foreign_key_check').fetchall():
                 raise RuntimeError('Migration foreign key verification failed.')

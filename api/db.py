@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from .errors import database_error
+from .schema_objects import load_schema, read_objects
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -54,19 +55,17 @@ def validate(path: Path):
     if not path.is_file():
         raise RuntimeError(f'Database not found: {path}. Run python -m api.db init --demo first.')
     with connection(path) as db:
-        definitions = {row['name']: row['sql'] for row in db.execute(
-            "SELECT name, sql FROM sqlite_master WHERE type IN ('table','view','trigger')")}
-        required = ('floors', 'rooms', 'seats', 'reservations', 'seat_occupancy',
-                    'reservation_status', 'seat_status', 'reservations_validate_insert',
-                    'reservations_validate_update', 'reservations_stamp_status', 'seats_initialize_occupancy',
-                    'reservation_moves', 'reservations_record_move', 'users', 'auth_sessions',
-                    'admins', 'admin_sessions', 'reservation_admin_context', 'reservation_owners',
-                    'reservation_owners_one_active', 'reservation_owners_immutable', 'reservations_one_active_user',
-                    'user_profiles', 'reservation_admin_insert_context',
-                    'reservation_time_states', 'reservation_clock_lease',
-                    'user_seat_history', 'reservation_history_progress')
-        if not all(name in definitions for name in required):
-            raise RuntimeError('Incompatible database: seat-move schema, ID-auth schema, admin schema and reservation ownership schema are required. Back up and run python -m api.migrations --backup <backup.db>.')
+        actual = read_objects(db)
+        definitions = {name: obj.sql for name, obj in actual.items()}
+        expected = load_schema(ROOT/'schema.sql')
+        missing = [name for name in expected if name not in actual]
+        if missing:
+            raise RuntimeError('Incompatible database: missing required objects: '
+                               + ', '.join(missing)
+                               + '. Back up and run python -m api.migrations --backup <backup.db>.')
+        wrong_types = [name for name, obj in expected.items() if actual[name].kind != obj.kind]
+        if wrong_types:
+            raise RuntimeError('Incompatible database: unexpected object types: '+', '.join(wrong_types))
         if ("'CONFIRMED'" not in definitions['reservations']
                 or 'starts_at is immutable' not in definitions['reservations_validate_update']
                 or 'confirmed_at is immutable' not in definitions['reservations_validate_update']
