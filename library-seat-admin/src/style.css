@@ -258,12 +258,6 @@ form {
   font-size: 11px;
   color: var(--muted);
 }
-.help {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  color: var(--muted);
-}
 .button.button-size-medium {
   min-height: 46px;
   padding: 11px 12px;

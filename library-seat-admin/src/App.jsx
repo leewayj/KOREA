@@ -161,18 +161,6 @@ function RoomPage({ room, seats, now, go }) {
         <p className="muted tiny">
           ※ 예약 없이 착석한 좌석은 실제 착석에 포함됩니다.
         </p>
-        <div className="help tiny">
-          <p>
-            미확인 좌석은 이용률 계산에서 제외해요.
-            <br />
-            전체 미확인 시 ‘확인 불가’로 표시해요.
-          </p>
-          <p>
-            기준: 여유 &lt;50% · 보통 50% 이상~80% 미만
-            <br />
-            혼잡 ≥80% (확인 좌석 기준)
-          </p>
-        </div>
       </Card>
       <div className="filters">
         {[
