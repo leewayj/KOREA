@@ -1,7 +1,7 @@
 import { Button } from './Button'
-import { rooms } from '../data/rooms'
 import { timeFormat } from '../data/reservation'
 import { previewStudent } from '../data/profile'
+import { session } from '../api'
 import './home.css'
 
 function ActiveReservationCard({ reservation, room, now, onViewReservation }) {
@@ -33,7 +33,9 @@ function ActiveReservationCard({ reservation, room, now, onViewReservation }) {
   )
 }
 
-export default function HomePage({ onReserve, onManage, reservation, reservationRoom, onViewReservation, now, returnOpen, onRequestReturn }) {
+export default function HomePage({ rooms, apiMode, onReserve, onManage, reservation, reservationRoom, onViewReservation, now, returnOpen, onRequestReturn }) {
+  const user = apiMode ? session()?.user : null
+  const student = user ? { studentId: user.s_id, college: user.college, department: user.department, year: null } : apiMode ? { studentId: '로그인 필요', college: '—', department: '—', year: null } : previewStudent
   const primaryAction = reservation ? '좌석 변경' : '좌석 예약'
   return (
     <main className="home-content" aria-label="홈 서비스" inert={returnOpen}>
@@ -42,10 +44,10 @@ export default function HomePage({ onReserve, onManage, reservation, reservation
         <div className="profile-overview">
           <div className="profile-photo-placeholder" role="img" aria-label="프로필 사진 미등록" />
           <dl className="profile-details">
-            <div><dt>학번</dt><dd>{previewStudent.studentId}</dd></div>
-            <div><dt>소속 대학</dt><dd>{previewStudent.college}</dd></div>
-            <div><dt>학과</dt><dd>{previewStudent.department}</dd></div>
-            <div><dt>학년</dt><dd>{previewStudent.year}학년</dd></div>
+            <div><dt>학번</dt><dd>{student.studentId}</dd></div>
+            <div><dt>소속 대학</dt><dd>{student.college}</dd></div>
+            <div><dt>학과</dt><dd>{student.department}</dd></div>
+            {student.year && <div><dt>학년</dt><dd>{student.year}학년</dd></div>}
           </dl>
         </div>
         {reservation ? (
@@ -81,7 +83,7 @@ export default function HomePage({ onReserve, onManage, reservation, reservation
             <span className="usage-track" role="meter" aria-label={`${room.name} 좌석 이용률`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={room.usage}>
               <span className="usage-fill" style={{ width: `${room.usage}%` }} />
             </span>
-            <span className="congestion-status">{room.congestion} · {room.usage}%</span>
+            <span className="congestion-status">{!apiMode && room.congestion + ' · '}{room.usage}%</span>
           </div>
         ))}
       </section>

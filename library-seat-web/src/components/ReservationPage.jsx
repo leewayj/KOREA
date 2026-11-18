@@ -4,7 +4,7 @@ import './reservation.css'
 import { dateFormat, timeFormat } from '../data/reservation'
 import './reservation-flow.css'
 
-export default function ReservationPage({ reservation, room, onChange, onExtend, returnOpen, onRequestReturn, now }) {
+export default function ReservationPage({ reservation, room, onChange, onExtend, returnOpen, onRequestReturn, now, saving }) {
   const remaining = Math.max(0, reservation.endsAt - now)
   const endingSoon = remaining > 0 && remaining <= 10 * 60000
   const minutes = Math.ceil(remaining / 60000)
@@ -17,7 +17,7 @@ export default function ReservationPage({ reservation, room, onChange, onExtend,
       <main className="reservation-content" aria-label="내 예약 정보" inert={returnOpen}>
         <div className="reservation-summary">
           <h2>내 예약 정보</h2>
-          <p className="reservation-student">학번 {reservation.studentId}</p>
+          {reservation.studentId && <p className="reservation-student">학번 {reservation.studentId}</p>}
           <p>{dateFormat.format(reservation.startsAt).replaceAll('-', '.')} · {room.name}</p>
         </div>
         <section className={`reservation-details${endingSoon ? ' ending-soon' : ''}`} aria-label="좌석과 예약 시간">
@@ -41,8 +41,8 @@ export default function ReservationPage({ reservation, room, onChange, onExtend,
         </section>
       </main>
       <footer className="reservation-actions" inert={returnOpen}>
-        <Button variant="neutral" onPress={onRequestReturn}>좌석 반납</Button>
-        <div><Button onPress={onChange} isDisabled={remaining === 0}>좌석 변경</Button><Button variant="neutral" onPress={onExtend} isDisabled={remaining === 0}>예약 연장</Button></div>
+        <Button variant="neutral" onPress={onRequestReturn} isDisabled={saving || remaining === 0}>좌석 반납</Button>
+        <div><Button onPress={onChange} isDisabled={saving || remaining === 0}>좌석 변경</Button><Button variant="neutral" onPress={onExtend} isDisabled={saving || remaining === 0}>예약 연장</Button></div>
       </footer>
 
     </>
