@@ -1,0 +1,11 @@
+{
+  "name": "korea",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:user": "npm --prefix library-seat-web run dev -- --host 127.0.0.1 --port 5173 --strictPort",
+    "dev:admin": "npm --prefix library-seat-admin run dev",
+    "install:all": "npm --prefix library-seat-web ci && npm --prefix library-seat-admin ci"
+  }
+}
