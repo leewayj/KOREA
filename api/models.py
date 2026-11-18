@@ -203,3 +203,18 @@ class ErrorDetail(BaseModel):
 
 class ErrorResponse(BaseModel):
     error: ErrorDetail
+
+
+class OccupancyUpdate(Input):
+    state: Literal['OCCUPIED', 'EMPTY']
+
+
+class DeviceReservationInfo(BaseModel):
+    seat_id: int
+    reservation_state: Literal['AVAILABLE', 'RESERVED']
+    active_reservation_id: int | None
+    starts_at: int | None
+    ends_at: int | None
+    remaining_seconds: int | None
+    next_reservation: NextReservation | None
+    server_now: int

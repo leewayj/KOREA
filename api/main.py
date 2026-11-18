@@ -15,6 +15,7 @@ from .admin import router as admin_router
 from .me import router as me_router, StudentSession
 from .maintenance import router as maintenance_router
 from .clock import ReservationClock
+from .devices import router as device_router
 from .tags import SERVER, LOCATION, RESERVATION_READ, RESERVATION_WRITE, OPENAPI_TAGS
 
 from .db import default_path, validate
@@ -145,7 +146,7 @@ def create_app(database_path: Path | None = None) -> FastAPI:
             if worker.thread is not None:
                 worker.stop()
 
-    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.11.0', lifespan=lifespan, openapi_tags=OPENAPI_TAGS,
+    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.12.0', lifespan=lifespan, openapi_tags=OPENAPI_TAGS,
                   description='관리자 테스트용 API. 시간은 UTC Unix 초이며, 실제 착석자 인증은 하지 않습니다.')
     app.state.service = Service(path)
 
@@ -180,6 +181,7 @@ def create_app(database_path: Path | None = None) -> FastAPI:
         app.add_middleware(CORSMiddleware, allow_origins=origins,
                            allow_methods=['GET', 'POST', 'PATCH', 'DELETE'], allow_headers=['Content-Type', 'Authorization'])
     app.include_router(router)
+    app.include_router(device_router)
     app.include_router(auth_router)
     app.include_router(admin_router)
     app.include_router(me_router)
