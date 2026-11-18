@@ -4,16 +4,31 @@ import SeatPage from './components/SeatPage'
 import ReservationPage from './components/ReservationPage'
 import ReturnSeatDialog from './components/ReturnSeatDialog'
 import ExpiredReservationPage from './components/ExpiredReservationPage'
-import { createPreviewReservation, readPreviewReservation, savePreviewReservation, isReservationActive, canChangeSeat, changeReservationSeat, extendReservation, createReservationFixture } from './data/reservation'
-import { rooms } from './data/rooms'
+import { createPreviewReservation, readPreviewReservation, savePreviewReservation, isReservationActive, canChangeSeat, changeReservationSeat, extendReservation, createReservationFixture, reservationDuration } from './data/reservation'
+import { rooms as previewRooms } from './data/rooms'
+import { reservationApiEnabled, fetchSeats, fetchSeat, fetchMyReservation, reserveApiSeat, moveApiReservation, extendApiReservation, endApiReservation } from './data/reservationApi'
 import './App.css'
 
 const fixtureName = import.meta.env.DEV ? new URLSearchParams(window.location.search).get('preview') : null
 const fixture = createReservationFixture(fixtureName)
 
+const apiMode = reservationApiEnabled && !fixture
+const roomIdsByCode = { R1: 'reading-1', R2: 'reading-2', FOCUS: 'focus', HOLMZ: 'holmz' }
+
+function toWebReservation(reservation, seat) {
+  return {
+    id: reservation.id,
+    roomId: roomIdsByCode[seat.room_code],
+    seat: Number(seat.seat_number),
+    startsAt: reservation.starts_at * 1000,
+    endsAt: reservation.ends_at * 1000,
+    effectiveStatus: reservation.effective_status,
+  }
+}
+
 function getRoute() {
   const [page, roomId] = window.location.hash.slice(1).split('/')
-  if (['seats', 'selected'].includes(page) && rooms.some((room) => room.id === roomId)) return { page, roomId }
+  if (['seats', 'selected'].includes(page) && previewRooms.some((room) => room.id === roomId)) return { page, roomId }
   return { page: ['rooms', 'reservation', 'expired'].includes(page) ? page : 'home', roomId: null }
 }
 
@@ -41,9 +56,21 @@ function RoomStatusCard({ room, onSelect, changeMode }) {
 function App() {
   const [route, setRoute] = useState(getRoute)
   const { page, roomId } = route
+  const [apiSeats, setApiSeats] = useState([])
+  const [loading, setLoading] = useState(apiMode)
+  const [loadError, setLoadError] = useState('')
+  const [loadVersion, setLoadVersion] = useState(0)
+  const savingReservation = useRef(false)
+  const [saving, setSaving] = useState(false)
+  const rooms = apiMode ? previewRooms.map((room) => {
+    const seats = apiSeats.filter((seat) => roomIdsByCode[seat.room_code] === room.id)
+    const reserved = seats.filter((seat) => seat.reservation_state === 'RESERVED').length
+    const total = seats.length
+    return { ...room, total, reserved, available: total - reserved, usage: total ? Math.round(reserved / total * 100) : 0 }
+  }) : previewRooms
   const room = rooms.find((item) => item.id === roomId)
   const [selectedSeat, setSelectedSeat] = useState(null)
-  const [reservation, setReservation] = useState(() => fixture || readPreviewReservation())
+  const [reservation, setReservation] = useState(() => fixture || (apiMode ? null : readPreviewReservation()))
   const [now, setNow] = useState(Date.now)
   const activeReservation = isReservationActive(reservation, now) ? reservation : null
   const [returnOpen, setReturnOpen] = useState(false)
@@ -67,7 +94,80 @@ function App() {
     appShell.current?.querySelector('main')?.scrollTo({ top: 0 })
   }, [page, roomId])
 
-  useEffect(() => { if (!fixture) savePreviewReservation(reservation) }, [reservation])
+  useEffect(() => { if (!fixture && !apiMode) savePreviewReservation(reservation) }, [reservation])
+
+  useEffect(() => {
+    if (!apiMode) return
+    const controller = new AbortController()
+
+    async function load() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const [seats, saved] = await Promise.all([
+          fetchSeats(controller.signal),
+          fetchMyReservation(controller.signal),
+        ])
+        const seat = saved && (seats.find((item) => item.seat_id === saved.seat_id)
+          ?? await fetchSeat(saved.seat_id, controller.signal))
+        if (controller.signal.aborted) return
+        if (seat && !roomIdsByCode[seat.room_code]) throw new Error('Unknown reservation room')
+        setApiSeats(seats)
+        setReservation(saved ? toWebReservation(saved, seat) : null)
+      } catch (error) {
+        if (!controller.signal.aborted) setLoadError(error.message || '예약 서버에 연결할 수 없어요.')
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    }
+
+    load()
+    return () => controller.abort()
+  }, [loadVersion])
+
+  function refresh() {
+    setLoadVersion((version) => version + 1)
+  }
+
+  function clearReservation() {
+    setReservation(null)
+  }
+
+  async function updateApiReservation(send, onSuccess) {
+    if (savingReservation.current || loading) return
+    savingReservation.current = true
+    setSaving(true)
+    try {
+      onSuccess(await send())
+    } catch (error) {
+      setSelectedSeat(null)
+      setReturnOpen(false)
+      showNotice(error.status ? error.message : '요청 결과를 확인할 수 없어요. 예약 정보를 다시 확인해 주세요.')
+    } finally {
+      refresh()
+      savingReservation.current = false
+      setSaving(false)
+    }
+  }
+
+  function bookSeat(number) {
+    const seat = apiSeats.find((item) => roomIdsByCode[item.room_code] === roomId
+      && Number(item.seat_number) === number && item.reservation_state === 'AVAILABLE')
+    if (!seat) return
+    const send = activeReservation
+      ? () => moveApiReservation(activeReservation.id, seat.seat_id)
+      : () => reserveApiSeat(seat.seat_id, reservationDuration / 1000)
+    return updateApiReservation(send, (saved) => {
+      setReservation(toWebReservation(saved, seat))
+      navigate('reservation')
+    })
+  }
+
+  function returnSeat() {
+    const finish = () => { clearReservation(); navigate('home') }
+    if (apiMode) return updateApiReservation(() => endApiReservation(reservation.id), finish)
+    finish()
+  }
 
   useEffect(() => {
     if (!reservation) return
@@ -79,6 +179,7 @@ function App() {
   }, [reservation])
 
   useEffect(() => {
+    if (loading || loadError) return
     const reservationPages = ['reservation', 'selected']
     if (reservation && !activeReservation && reservationPages.includes(page)) {
       window.location.replace('#expired')
@@ -91,7 +192,7 @@ function App() {
     } else if (page === 'seats' && activeReservation) {
       window.location.replace(`#selected/${roomId}`)
     }
-  }, [page, roomId, reservation, activeReservation])
+  }, [page, roomId, reservation, activeReservation, loading, loadError])
 
   useEffect(() => {
     const onHashChange = () => {
@@ -115,7 +216,7 @@ function App() {
   }, [notice])
 
   function requestReturn(event) {
-    if (!isReservationActive(reservation)) return
+    if (savingReservation.current || !isReservationActive(reservation)) return
     returnTrigger.current = event.target
     setReturnOpen(true)
   }
@@ -131,9 +232,9 @@ function App() {
           {page === 'home' ? <span className="navigation-spacer" aria-hidden="true" /> : (
             <button className="icon-button" aria-label={['seats', 'selected'].includes(page) ? '열람실 목록으로 돌아가기' : 'HOME'} onClick={() => {
               if (['seats', 'selected'].includes(page)) navigate('rooms')
-              else { if (page === 'expired') setReservation(null); navigate('home') }
+              else { if (page === 'expired') clearReservation(); navigate('home') }
             }}>
-              <Icon name={page === 'rooms' ? 'nav-home-v2' : 'seat-back-v2'} />
+              <Icon name={['reservation', 'expired'].includes(page) ? 'nav-home-v2' : 'seat-back-v2'} />
             </button>
           )}
           <h1>{pageTitle}</h1>
@@ -141,12 +242,19 @@ function App() {
         </div>
       </header>
 
-      {page === 'home' ? (
-        <HomePage returnOpen={showReturnDialog} onRequestReturn={requestReturn} now={now} reservation={activeReservation} reservationRoom={reservationRoom} onViewReservation={() => navigate('reservation')} onReserve={() => navigate('rooms')} onManage={() => showNotice('선호 좌석 관리는 준비 중입니다.')} />
+      {loading || loadError ? (
+        <main className="room-list" aria-busy={loading}>
+          <p role="status">{loadError || '좌석과 예약 정보를 불러오는 중이에요.'}</p>
+          {loadError && <button className="room-card" onClick={refresh}>다시 시도</button>}
+        </main>
+      ) : page === 'home' ? (
+        <HomePage rooms={rooms} apiMode={apiMode} returnOpen={showReturnDialog} onRequestReturn={requestReturn} now={now} reservation={activeReservation} reservationRoom={reservationRoom} onViewReservation={() => navigate('reservation')} onReserve={() => navigate('rooms')} onManage={() => showNotice('선호 좌석 관리는 준비 중입니다.')} />
        ) : ['seats', 'selected'].includes(page) ? (
-        <SeatPage key={`${page}/${roomId}`} changeMode={changeMode} onContinue={() => navigate('reservation')} room={room} selectedSeat={selectedSeat}
+        <SeatPage key={`${page}/${roomId}`} changeMode={changeMode} onContinue={() => navigate('reservation')} room={room} selectedSeat={selectedSeat} booking={saving} apiMode={apiMode}
+          serverSeats={apiMode ? apiSeats.filter((seat) => roomIdsByCode[seat.room_code] === roomId) : null}
           onSelect={setSelectedSeat} previousSeat={activeReservation?.seat} previousRoom={reservationRoom} mySeat={activeReservation?.roomId === roomId ? activeReservation.seat : undefined}
           onReserve={(seat) => {
+            if (apiMode) { bookSeat(seat); return }
             if (page === 'selected' || activeReservation) {
               if (!isReservationActive(reservation)) { navigate('expired'); return }
               if (!canChangeSeat(reservation, roomId, seat)) return
@@ -157,18 +265,27 @@ function App() {
               navigate('reservation')
             }
           }}
-          onRefresh={() => showNotice('현재 미리보기 좌석 현황입니다.')}
+          onRefresh={apiMode ? refresh : () => showNotice('현재 미리보기 좌석 현황입니다.')}
         />
       ) : page === 'expired' && reservation ? (
         <ExpiredReservationPage reservation={reservation} room={reservationRoom} now={now}
-          onReserve={() => { setReservation(null); navigate('rooms') }}
-          onConfirm={() => { setReservation(null); navigate('home') }} />
+          onReserve={() => { clearReservation(); navigate('rooms') }}
+          onConfirm={() => { clearReservation(); navigate('home') }} />
       ) : page === 'reservation' ? (
-        activeReservation ? <ReservationPage now={now} reservation={reservation} room={reservationRoom}
+        activeReservation ? <ReservationPage saving={saving} now={now} reservation={reservation} room={reservationRoom}
           returnOpen={showReturnDialog} onRequestReturn={requestReturn}
           onChange={() => navigate(`selected/${reservation.roomId}`)}
           onExtend={() => {
             if (!isReservationActive(reservation)) { navigate('expired'); return }
+            if (apiMode) {
+              return updateApiReservation(
+                () => extendApiReservation(reservation.id, reservationDuration / 1000),
+                (saved) => {
+                  setReservation({ ...reservation, endsAt: saved.ends_at * 1000, effectiveStatus: saved.effective_status })
+                  showNotice('예약 시간이 2시간 연장되었습니다.')
+                },
+              )
+            }
             setReservation((current) => extendReservation(current))
             showNotice('예약 시간이 2시간 연장되었습니다.')
           }}
@@ -179,8 +296,8 @@ function App() {
         </main>
       )}
 
-      {showReturnDialog && <ReturnSeatDialog triggerRef={returnTrigger} onOpenChange={setReturnOpen}
-        onConfirm={() => { setReservation(null); navigate('home') }} />}
+      {showReturnDialog && <ReturnSeatDialog triggerRef={returnTrigger} onOpenChange={setReturnOpen} saving={saving}
+        onConfirm={returnSeat} />}
 
       <div className={`notice${notice ? ' visible' : ''}`} role="status" aria-live="polite">{notice}</div>
     </div>

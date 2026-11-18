@@ -4,7 +4,11 @@ import SeatMap from './SeatMap'
 import './SeatPage.css'
 import './seat-change.css'
 
-export default function SeatPage({ room, selectedSeat, onSelect, mySeat, previousSeat, previousRoom, onReserve, onRefresh, changeMode = false, onContinue }) {
+function formatRoomLabel(room) {
+  return room.name.replace(/ \((\d+)F\)$/, ' · $1층')
+}
+
+export default function SeatPage({ room, selectedSeat, onSelect, mySeat, previousSeat, previousRoom, onReserve, onRefresh, changeMode = false, onContinue, serverSeats, booking, apiMode }) {
   const dialog = useRef(null)
   const trigger = useRef(null)
   const isSelecting = selectedSeat !== null
@@ -16,7 +20,7 @@ export default function SeatPage({ room, selectedSeat, onSelect, mySeat, previou
     const buttons = panel.querySelectorAll('button')
     buttons[0]?.focus({ preventScroll: true })
     const handleKey = (event) => {
-      if (event.key === 'Escape') {
+      if (event.key === 'Escape' && !booking) {
         event.preventDefault()
         onSelect(null)
       }
@@ -36,7 +40,7 @@ export default function SeatPage({ room, selectedSeat, onSelect, mySeat, previou
       panel.removeEventListener('keydown', handleKey)
       trigger.current?.focus({ preventScroll: true })
     }
-  }, [isSelecting, onSelect])
+  }, [isSelecting, onSelect, booking])
 
 
   return (
@@ -54,26 +58,39 @@ export default function SeatPage({ room, selectedSeat, onSelect, mySeat, previou
           <li><span className="legend-chip reserved" />예약됨</li>
           <li><span className="legend-chip own" />내 좌석</li>
         </ul>
-        <SeatMap mySeat={mySeat} selectedSeat={selectedSeat} changeMode={changeMode} onSelect={(number, element) => { trigger.current = element; onSelect(number) }} />
+        <SeatMap serverSeats={serverSeats} mySeat={mySeat} selectedSeat={selectedSeat} changeMode={changeMode} onSelect={(number, element) => { trigger.current = element; onSelect(number) }} />
         {!changeMode && (
           <div className="seat-guidance" role="status">
             <p>{mySeat ? `${mySeat}번 좌석을 선택했습니다` : '이용할 좌석을 선택해 주세요'}</p>
-            <p>{mySeat ? '미리보기 예약이며 실제 예약은 진행되지 않습니다.' : '이미 예약된 좌석은 선택할 수 없습니다.'}</p>
+            <p>{mySeat && !apiMode ? '미리보기 예약이며 실제 예약은 진행되지 않습니다.' : '이미 예약된 좌석은 선택할 수 없습니다.'}</p>
           </div>
         )}
       </main>
-      {isSelecting && <div className={`seat-modal-backdrop${changeMode ? ' change-backdrop' : ''}`} aria-hidden="true" onClick={() => onSelect(null)} />}
+      {isSelecting && <div className={`seat-modal-backdrop${changeMode ? ' change-backdrop' : ''}`} aria-hidden="true" onClick={() => { if (!booking) onSelect(null) }} />}
       <footer className="seat-footer" inert={isSelecting}>
-        <p id="seat-scroll-help">{changeMode ? '좌우로 밀어 전체 72석을 확인하세요' : '좌우로 밀어 전체 좌석을 확인하세요.'}</p>
+        <p id="seat-scroll-help">{changeMode && !apiMode ? '좌우로 밀어 전체 72석을 확인하세요' : '좌우로 밀어 전체 좌석을 확인하세요.'}</p>
         <Button isDisabled={!changeMode} className={`seat-footer-button${changeMode ? ' ready' : ''}`} onPress={onContinue}>{changeMode ? '내 예약 정보' : '좌석을 선택해 주세요'}</Button>
       </footer>
       {isSelecting && (
-        <section ref={dialog} className="seat-dialog" role="dialog" aria-modal="true" aria-labelledby="seat-dialog-title" aria-describedby="seat-dialog-description">
-          <h2 id="seat-dialog-title">{changeMode ? changingRoom ? '열람실 좌석 변경' : `${previousSeat}번 → ${selectedSeat}번` : `${selectedSeat}번 좌석`}</h2>
-          <p id="seat-dialog-description">{changingRoom ? <>{previousRoom.name} · {previousSeat}번에서<br />{room.name} · {selectedSeat}번으로 변경할까요?</> : changeMode ? '선택한 좌석으로 변경할까요?' : '이 좌석을 선택하시겠어요?'}</p>
+        <section ref={dialog} className="seat-dialog" role="dialog" aria-modal="true" aria-labelledby="seat-dialog-title" aria-describedby={changeMode ? 'seat-change-comparison seat-dialog-description' : 'seat-dialog-description'}>
+          <h2 id="seat-dialog-title">{changeMode ? '좌석 변경' : `${selectedSeat}번 좌석`}</h2>
+          {changeMode && (
+            <div className="seat-change-comparison" id="seat-change-comparison">
+              <div className="seat-change-seat">
+                {changingRoom && <span className="seat-change-room">{formatRoomLabel(previousRoom)}</span>}
+                <strong>{previousSeat}번</strong>
+              </div>
+              <span className="seat-change-arrow">→</span>
+              <div className="seat-change-seat">
+                {changingRoom && <span className="seat-change-room">{formatRoomLabel(room)}</span>}
+                <strong>{selectedSeat}번</strong>
+              </div>
+            </div>
+          )}
+          <p id="seat-dialog-description">{changeMode ? '선택한 좌석으로 변경할까요?' : '이 좌석을 선택하시겠어요?'}</p>
           <div className="seat-dialog-actions">
-            <Button variant="neutral" onPress={() => onSelect(null)}>취소</Button>
-            <Button onPress={() => onReserve(selectedSeat)}>{changeMode ? '확인' : '예약하기'}</Button>
+            <Button variant="neutral" isDisabled={booking} onPress={() => onSelect(null)}>취소</Button>
+            <Button isDisabled={booking} onPress={() => onReserve(selectedSeat)}>{changeMode ? '변경하기' : '예약하기'}</Button>
           </div>
         </section>
       )}

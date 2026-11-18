@@ -1,0 +1,8 @@
+.api-auth { max-width: 440px; margin: 48px auto; padding: 24px; background: white; border-radius: 16px; }
+.api-auth h1 { font-size: 26px; margin-bottom: 24px; }
+.api-auth form, .api-auth label { display: grid; gap: 12px; }
+.api-auth form { gap: 20px; }
+.api-auth input { width: 100%; padding: 12px; border: 1px solid #b9c9d8; border-radius: 8px; box-sizing: border-box; font: inherit; }
+.api-auth button, .api-account button { padding: 10px 16px; cursor: pointer; border: 1px solid #b9c9d8; border-radius: 8px; background: #eef5fc; color: #004a86; font: inherit; }
+.api-auth [role=alert] { color: #b3261e; }
+.api-account { display: flex; justify-content: flex-end; align-items: center; gap: 16px; padding: 8px 16px; }

@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: korea-reservations
+    runtime: docker
+    branch: deploy/user-api
+    plan: starter
+    numInstances: 1
+    autoDeployTrigger: commit
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    envVars:
+      - key: KOREA_DB_PATH
+        value: /var/data/library.db
+      - key: KOREA_CLOCK_ENABLED
+        value: "1"
+      - key: KOREA_SEED_DEMO
+        value: "1"
+    disk:
+      name: korea-data
+      mountPath: /var/data
+      sizeGB: 1
