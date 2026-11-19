@@ -10,7 +10,7 @@ const char* password = "11111111";         // 와이파이 비밀번호
 
 // 백엔드 서버 주소 (1번 좌석 기준)
 const char* serverGetUrl = "http://10.44.160.72:8000/seats/1";
-const char* serverPostUrl = "http://10.44.160.72:8000/api/seats/1/occupancy";
+const char* serverPostUrl = "http://10.44.160.72:8000/seats/1/occupancy";
 
 // 핀 설정
 const int LOADCELL_DOUT_PIN = 21;
