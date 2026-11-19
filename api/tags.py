@@ -8,9 +8,11 @@ RESERVATION_READ = '예약 조회'
 RESERVATION_WRITE = '예약 등록·변경'
 ADMIN_AUTH = '관리자 인증'
 ADMIN_RESERVATION = '관리자 예약 관리'
+ADMIN_SETTINGS = '관리자 예약 설정'
 ADMIN_MAINTENANCE = '관리자 데이터 정리'
 
 OPENAPI_TAGS = [
+    {'name': ADMIN_SETTINGS, 'description': '관리자만 기본 예약 시간과 최대 연장 횟수를 조회·수정합니다. 변경은 새 예약부터 적용합니다.'},
     {'name': SENSOR, 'description': '인증 없이 착석 상태를 수신하고 ESP32에 현재·다음 예약정보를 전달합니다.'},
     {'name': SERVER, 'description': '서버와 데이터베이스 연결 상태 확인.'},
     {'name': USER_AUTH, 'description': '사용자 별도 등록, 학번 로그인, 로그아웃. 실제 학생 본인 여부는 검증하지 않습니다.'},

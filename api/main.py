@@ -16,13 +16,14 @@ from .me import router as me_router, StudentSession
 from .maintenance import router as maintenance_router
 from .clock import ReservationClock
 from .devices import router as device_router
+from .reservation_settings import router as reservation_settings_router
 from .tags import SERVER, LOCATION, RESERVATION_READ, RESERVATION_WRITE, OPENAPI_TAGS
 
 from .db import default_path, validate
 from .errors import APIError
 from .models import (EffectiveStatus, ErrorResponse, Floor, Identifier,
                      Reservation, ReservationCreate, ReservationEdit,
-                     ReservationExtend, ReservationMove, Room, Seat)
+                     ReservationMove, Room, Seat)
 from .service import Service
 
 ID = Annotated[Identifier, PathParam()]
@@ -104,9 +105,11 @@ def edit_reservation(request: Request, reservation_id: ID, body: ReservationEdit
 
 @router.post('/reservations/{reservation_id}/extend', response_model=Reservation, tags=[RESERVATION_WRITE],
              summary='기존 예약에 이용시간 추가',
-             description='additional_seconds를 더합니다. 반복 호출하면 매번 시간이 추가됩니다.')
-def extend_reservation(request: Request, reservation_id: ID, body: ReservationExtend):
-    return service(request).duration(reservation_id, body.additional_seconds, additional=True)
+             description='본문 없이 호출합니다. 예약 생성 당시 저장된 기본 이용시간을 기존 종료 시각에 더합니다. '
+                         '연장 횟수 제한과 예약 충돌 검증을 적용합니다.',
+             dependencies=[Depends(no_body)])
+def extend_reservation(request: Request, reservation_id: ID):
+    return service(request).extend(reservation_id)
 
 
 @router.post('/reservations/{reservation_id}/move', response_model=Reservation, tags=[RESERVATION_WRITE],
@@ -146,7 +149,7 @@ def create_app(database_path: Path | None = None) -> FastAPI:
             if worker.thread is not None:
                 worker.stop()
 
-    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.12.0', lifespan=lifespan, openapi_tags=OPENAPI_TAGS,
+    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.13.0', lifespan=lifespan, openapi_tags=OPENAPI_TAGS,
                   description='관리자 테스트용 API. 시간은 UTC Unix 초이며, 실제 착석자 인증은 하지 않습니다.')
     app.state.service = Service(path)
 
@@ -184,6 +187,7 @@ def create_app(database_path: Path | None = None) -> FastAPI:
     app.include_router(device_router)
     app.include_router(auth_router)
     app.include_router(admin_router)
+    app.include_router(reservation_settings_router)
     app.include_router(me_router)
     app.include_router(maintenance_router)
     return app

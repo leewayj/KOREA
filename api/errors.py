@@ -9,6 +9,7 @@ class APIError(Exception):
 def database_error(error: sqlite3.Error) -> APIError:
     text = str(error)
     conflicts = {
+        'extension limit reached': ('EXTENSION_LIMIT_REACHED', '예약 생성 당시 허용된 연장 횟수를 모두 사용했습니다.'),
         'user already has active reservation': ('ACTIVE_RESERVATION_EXISTS', '이미 활성 예약이 있습니다. 기존 예약을 종료하거나 취소한 뒤 다시 예약하세요.'),
         'reservation overlaps': ('RESERVATION_CONFLICT', '이미 예약된 좌석입니다.'),
         'terminal reservation cannot be changed': ('RESERVATION_CLOSED', '종료·취소된 예약은 수정할 수 없습니다.'),

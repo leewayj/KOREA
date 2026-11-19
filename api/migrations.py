@@ -44,6 +44,14 @@ def upgrade(path: Path, backup: Path):
         if missing_core:
             raise RuntimeError('Compatible KOREA database is required; missing source tables: '
                                + ', '.join(missing_core))
+        if ('reservation_settings' in current and
+                db.execute('SELECT COUNT(*) FROM reservation_settings WHERE id=1').fetchone()[0] != 1):
+            raise RuntimeError('Existing reservation settings are missing; inspect before migration.')
+        if ('reservation_policies' in current and db.execute('''
+            SELECT 1 FROM reservations r LEFT JOIN reservation_policies p ON p.reservation_id=r.id
+            WHERE p.reservation_id IS NULL LIMIT 1
+        ''').fetchone()):
+            raise RuntimeError('Existing reservation policy snapshot is missing; inspect before migration.')
         for name, obj in latest.items():
             if name not in current or normalize(current[name]) == normalize(obj.sql):
                 continue
@@ -92,6 +100,15 @@ def upgrade(path: Path, backup: Path):
                         quoted = '"'+name.replace('"', '""')+'"'
                         db.execute(f'DROP {kind.upper()} {quoted}')
                         db.execute(obj.sql)
+            if 'reservation_settings' not in current:
+                db.execute('''INSERT INTO reservation_settings(id,default_duration_seconds,max_extensions)
+                              VALUES(1,21600,2)''')
+            if 'reservation_policies' not in current:
+                # Legacy bookings had no extension cap. Preserve that policy;
+                # zero counts only extensions after this migration, not inferred history.
+                db.execute('''INSERT INTO reservation_policies(reservation_id,default_duration_seconds,
+                              max_extensions,extension_count,is_legacy)
+                              SELECT id,21600,NULL,0,1 FROM reservations''')
             if 'seat_occupancy' not in current:
                 db.execute('INSERT INTO seat_occupancy(seat_id) SELECT id FROM seats')
             if 'reservation_moves' not in current:

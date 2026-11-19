@@ -41,6 +41,21 @@ CREATE TABLE admin_sessions (
 );
 CREATE INDEX admin_sessions_expiry ON admin_sessions(expires_at);
 
+-- Current policy. Each new reservation stores its own immutable copy.
+CREATE TABLE reservation_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    default_duration_seconds INTEGER NOT NULL CHECK (
+        typeof(default_duration_seconds) = 'integer' AND default_duration_seconds > 0),
+    max_extensions INTEGER NOT NULL CHECK (typeof(max_extensions) = 'integer' AND max_extensions >= 0),
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    updated_by TEXT REFERENCES admins(username)
+);
+INSERT INTO reservation_settings(id, default_duration_seconds, max_extensions) VALUES (1, 21600, 2);
+CREATE TRIGGER reservation_settings_no_delete BEFORE DELETE ON reservation_settings
+BEGIN
+    SELECT RAISE(ABORT, 'reservation settings cannot be deleted');
+END;
+
 CREATE TABLE floors (
     id INTEGER PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,
@@ -64,7 +79,7 @@ CREATE TABLE seats (
 );
 
 -- All timestamps are UTC Unix seconds. Convert to Asia/Seoul for display.
--- def_time is seconds per reservation; provisional default: 6 hours.
+-- API defaults come from reservation_settings; SQL fallback remains 6 hours.
 -- For another duration: INSERT ... (seat_id, def_time) VALUES (1, 3600).
 CREATE TABLE reservations (
     id INTEGER PRIMARY KEY,
@@ -84,6 +99,59 @@ CREATE TABLE reservations (
 );
 CREATE INDEX reservations_seat_time ON reservations(seat_id, starts_at, ends_at)
     WHERE status = 'CONFIRMED';
+
+CREATE TABLE reservation_policies (
+    reservation_id INTEGER PRIMARY KEY REFERENCES reservations(id) ON DELETE CASCADE,
+    default_duration_seconds INTEGER NOT NULL CHECK (
+        typeof(default_duration_seconds) = 'integer' AND default_duration_seconds > 0),
+    max_extensions INTEGER CHECK (max_extensions IS NULL OR
+        (typeof(max_extensions) = 'integer' AND max_extensions >= 0)),
+    extension_count INTEGER NOT NULL DEFAULT 0 CHECK (
+        typeof(extension_count) = 'integer' AND extension_count >= 0),
+    is_legacy INTEGER NOT NULL DEFAULT 0 CHECK (is_legacy IN (0, 1)),
+    CHECK (max_extensions IS NOT NULL OR is_legacy = 1),
+    CHECK (max_extensions IS NULL OR extension_count <= max_extensions)
+);
+
+CREATE TRIGGER reservations_capture_policy AFTER INSERT ON reservations
+BEGIN
+    SELECT RAISE(ABORT, 'reservation settings missing')
+        WHERE NOT EXISTS (SELECT 1 FROM reservation_settings WHERE id = 1);
+    INSERT INTO reservation_policies(reservation_id, default_duration_seconds, max_extensions)
+        SELECT NEW.id, default_duration_seconds, max_extensions FROM reservation_settings WHERE id = 1;
+END;
+
+CREATE TRIGGER reservation_policies_immutable BEFORE UPDATE ON reservation_policies
+BEGIN
+    SELECT RAISE(ABORT, 'reservation policy is immutable')
+        WHERE NEW.reservation_id IS NOT OLD.reservation_id
+           OR NEW.default_duration_seconds IS NOT OLD.default_duration_seconds
+           OR NEW.max_extensions IS NOT OLD.max_extensions
+           OR NEW.is_legacy IS NOT OLD.is_legacy;
+    SELECT RAISE(ABORT, 'extension count cannot decrease')
+        WHERE NEW.extension_count < OLD.extension_count;
+END;
+
+-- Any ordinary increase, including PATCH, consumes one extension.
+-- Verified administrator edits use their existing transaction-local context.
+CREATE TRIGGER reservations_extension_limit BEFORE UPDATE OF def_time ON reservations
+WHEN NEW.def_time > OLD.def_time
+ AND NOT EXISTS (SELECT 1 FROM reservation_admin_context WHERE reservation_id = OLD.id)
+BEGIN
+    SELECT RAISE(ABORT, 'reservation policy missing')
+        WHERE NOT EXISTS (SELECT 1 FROM reservation_policies WHERE reservation_id = OLD.id);
+    SELECT RAISE(ABORT, 'extension limit reached') WHERE EXISTS (
+        SELECT 1 FROM reservation_policies WHERE reservation_id = OLD.id
+          AND max_extensions IS NOT NULL AND extension_count >= max_extensions
+    );
+END;
+
+CREATE TRIGGER reservations_count_extension AFTER UPDATE OF def_time ON reservations
+WHEN NEW.def_time > OLD.def_time
+ AND NOT EXISTS (SELECT 1 FROM reservation_admin_context WHERE reservation_id = OLD.id)
+BEGIN
+    UPDATE reservation_policies SET extension_count = extension_count + 1 WHERE reservation_id = NEW.id;
+END;
 
 -- Ownership is separate so public reservation projections never expose student IDs.
 -- Existing ownerless reservations remain ownerless after migration.
