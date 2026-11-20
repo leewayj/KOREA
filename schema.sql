@@ -277,7 +277,7 @@ BEGIN
     SELECT RAISE(ABORT, 'cannot change duration while moving seat')
         WHERE NEW.seat_id <> OLD.seat_id AND NEW.def_time <> OLD.def_time;
     SELECT RAISE(ABORT, 'seat move clock is inconsistent')
-        WHERE NEW.seat_id <> OLD.seat_id AND unixepoch() <
+        WHERE NEW.seat_id <> OLD.seat_id AND OLD.starts_at <= unixepoch() AND unixepoch() <
             COALESCE((SELECT moved_at FROM reservation_moves WHERE reservation_id = OLD.id
                       ORDER BY id DESC LIMIT 1), OLD.starts_at);
     SELECT RAISE(ABORT, 'duration ends before latest seat move')
@@ -301,14 +301,14 @@ BEGIN
                         WHERE m.reservation_id = r.id ORDER BY m.id DESC LIMIT 1), r.starts_at)
               < NEW.starts_at + NEW.def_time
           AND (CASE WHEN EXISTS (SELECT 1 FROM reservation_admin_context WHERE reservation_id = OLD.id) THEN NEW.starts_at
-                    WHEN NEW.seat_id <> OLD.seat_id THEN unixepoch()
+                    WHEN NEW.seat_id <> OLD.seat_id THEN MAX(unixepoch(), NEW.starts_at)
                     ELSE COALESCE((SELECT moved_at FROM reservation_moves WHERE reservation_id = OLD.id
                                    ORDER BY id DESC LIMIT 1), NEW.starts_at) END) < r.ends_at
     );
 END;
 
 CREATE TRIGGER reservations_record_move AFTER UPDATE OF seat_id ON reservations
-WHEN NEW.seat_id <> OLD.seat_id
+WHEN NEW.seat_id <> OLD.seat_id AND NEW.starts_at <= unixepoch()
 BEGIN
     INSERT INTO reservation_moves(reservation_id, from_seat_id, to_seat_id, moved_at)
     VALUES (NEW.id, OLD.seat_id, NEW.seat_id, unixepoch());

@@ -99,21 +99,21 @@ def get_reservation(request: Request, reservation_id: ID):
 
 @router.post('/reservations/{reservation_id}/extend', response_model=Reservation, tags=[RESERVATION_WRITE], responses=OWNER_RESPONSES,
              summary='생성 당시 기본 시간만큼 예약 연장',
-             description='**본문을 보내지 않습니다.** `{}`, `null`, `additional_seconds` JSON도 422입니다.\n\n예약에 저장된 `policy_default_duration_seconds`를 기존 종료 시각에 더하고 연장 횟수 1회를 소비합니다. 이후 관리자 설정이 변경되어도 기존 예약의 연장량·한도는 유지합니다. 횟수 초과는 409 EXTENSION_LIMIT_REACHED, 시간 충돌은 409 RESERVATION_CONFLICT이며 실패 시 시간·횟수를 모두 유지합니다. 종료·취소·만료 예약은 거부합니다.\n\nDemoSession 로그인이 필요합니다. 로그인 학번과 예약 소유자를 비교해 본인 예약만 처리합니다. 타인·소유자 없는 예약은 403이며 반복 요청도 소유자를 먼저 확인합니다.',
+             description='**본문을 보내지 않습니다.** `{}`, `null`, `additional_seconds` JSON도 422입니다.\n\n예약에 저장된 `policy_default_duration_seconds`를 기존 종료 시각에 더하고 연장 횟수 1회를 소비합니다. 이후 관리자 설정이 변경되어도 기존 예약의 연장량·한도는 유지합니다. 횟수 초과는 409 EXTENSION_LIMIT_REACHED, 시간 충돌은 409 RESERVATION_CONFLICT이며 실패 시 시간·횟수를 모두 유지합니다. 현재 IN_USE 예약만 연장할 수 있습니다. 예정·종료·취소·만료 예약은 거부합니다.\n\nDemoSession 로그인이 필요합니다. 로그인 학번과 예약 소유자를 비교해 본인 예약만 처리합니다. 타인·소유자 없는 예약은 403이며 반복 요청도 소유자를 먼저 확인합니다.',
              dependencies=[Depends(no_body)])
 def extend_reservation(request: Request, reservation_id: ID, session: StudentSession):
     return service(request).extend(reservation_id, owner_s_id=session['user']['s_id'])
 
 
 @router.post('/reservations/{reservation_id}/move', response_model=Reservation, tags=[RESERVATION_WRITE], responses=OWNER_RESPONSES,
-             summary='이용 중 예약의 좌석 이동',
-             description='`{"target_seat_id":5}`처럼 목적 좌석의 전역 ID를 입력합니다. 현재 IN_USE인 CONFIRMED 예약만 이동할 수 있습니다. 목적 좌석의 남은 예약 구간 충돌을 검사하고, 예약 ID·시작/종료 시각·생성 정책·연장 횟수와 각 좌석의 착석 상태를 유지합니다. 이동 이력은 기록합니다. 같은 좌석이면 기존 결과를 반환합니다.\n\n현재 예정 예약은 이동할 수 없습니다. DemoSession 로그인이 필요하며 본인 예약만 처리합니다. 타인·소유자 없는 예약은 403입니다. 동일 좌석 요청도 소유자를 먼저 확인합니다.')
+             summary='예정·이용 중 예약의 좌석 이동',
+             description='`{"target_seat_id":5}`처럼 목적 좌석의 전역 ID를 입력합니다. CONFIRMED 예약 중 SCHEDULED 또는 IN_USE 상태만 이동할 수 있습니다. 목적 좌석에서 예정 예약은 전체 예약 구간, 사용 중 예약은 남은 구간의 충돌을 검사하고, 예약 ID·시작/종료 시각·생성 정책·연장 횟수와 각 좌석의 착석 상태를 유지합니다. 사용 중 이동만 이용 이력에 기록하며, 시작 전 좌석 변경은 이용 이력으로 남기지 않습니다. 같은 좌석이면 기존 결과를 반환합니다.\n\nDemoSession 로그인이 필요하며 본인 예약만 처리합니다. 타인·소유자 없는 예약은 403입니다. 동일 좌석 요청도 소유자를 먼저 확인합니다.')
 def move_reservation(request: Request, reservation_id: ID, body: ReservationMove, session: StudentSession):
     return service(request).move(reservation_id, body.target_seat_id, owner_s_id=session['user']['s_id'])
 
 
 @router.post('/reservations/{reservation_id}/cancel', response_model=Reservation, tags=[RESERVATION_WRITE], responses=OWNER_RESPONSES,
-             summary='이용 중 예약 취소', description='**본문 없이 호출**하여 저장 상태를 CANCELLED로 바꿉니다. 현재 IN_USE 예약만 취소할 수 있고 같은 취소를 반복하면 기존 결과를 반환합니다. 예정·자연 만료·종료 예약은 취소하지 못합니다. 예약을 물리 삭제하거나 착석 상태를 바꾸지는 않습니다.\n\nDemoSession 로그인이 필요합니다. 로그인 학번과 예약 소유자를 비교해 본인 예약만 처리합니다. 타인·소유자 없는 예약은 403이며 반복 요청도 소유자를 먼저 확인합니다.',
+             summary='예정 예약 취소', description='**본문 없이 호출**하여 저장 상태를 CANCELLED로 바꿉니다. 현재 SCHEDULED 예약만 취소할 수 있고 같은 취소를 반복하면 기존 결과를 반환합니다. 사용 중·자연 만료·종료 예약은 취소하지 못합니다. 예약을 물리 삭제하거나 착석 상태를 바꾸지는 않습니다.\n\nDemoSession 로그인이 필요합니다. 로그인 학번과 예약 소유자를 비교해 본인 예약만 처리합니다. 타인·소유자 없는 예약은 403이며 반복 요청도 소유자를 먼저 확인합니다.',
              dependencies=[Depends(no_body)])
 def cancel_reservation(request: Request, reservation_id: ID, session: StudentSession):
     return service(request).transition(reservation_id, 'CANCELLED', owner_s_id=session['user']['s_id'])

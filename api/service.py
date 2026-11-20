@@ -155,7 +155,7 @@ class Service:
         with connection(self.path, write=True) as db:
             row = owned_reservation(db, reservation_id, owner_s_id)
             now = db.execute('SELECT unixepoch()').fetchone()[0]
-            if row['status'] != 'CONFIRMED' or row['ends_at'] <= now:
+            if row['status'] != 'CONFIRMED' or row['effective_status'] != 'IN_USE':
                 raise APIError(409, 'RESERVATION_CLOSED', '종료·취소·만료된 예약은 수정할 수 없습니다.')
             duration = row['def_time'] + row['policy_default_duration_seconds']
             if duration > 9223372036854775807 - row['starts_at']:
@@ -170,16 +170,17 @@ class Service:
             row = owned_reservation(db, reservation_id, owner_s_id)
             if row['status'] == status:
                 return row  # Safe repeat: preserve the original transition timestamp.
-            if row['status'] != 'CONFIRMED' or row['effective_status'] != 'IN_USE':
-                raise APIError(409, 'RESERVATION_CLOSED', '종료·취소·만료된 예약은 변경할 수 없습니다.')
+            allowed = {'CANCELLED': 'SCHEDULED', 'ENDED': 'IN_USE'}
+            if row['status'] != 'CONFIRMED' or row['effective_status'] != allowed.get(status):
+                raise APIError(409, 'RESERVATION_CLOSED', '예정 예약은 취소만, 사용 중 예약은 종료만 가능합니다.')
             db.execute('UPDATE reservations SET status = ? WHERE id = ?', (status, reservation_id))
             return reservation(db, reservation_id)
 
     def move(self, reservation_id, target_seat_id, *, owner_s_id):
         with connection(self.path, write=True) as db:
             row = owned_reservation(db, reservation_id, owner_s_id)
-            if row['status'] != 'CONFIRMED' or row['effective_status'] != 'IN_USE':
-                raise APIError(409, 'RESERVATION_CLOSED', '종료·취소·만료된 예약은 이동할 수 없습니다.')
+            if row['status'] != 'CONFIRMED' or row['effective_status'] not in ('SCHEDULED', 'IN_USE'):
+                raise APIError(409, 'RESERVATION_CLOSED', '예정 또는 사용 중 예약만 이동할 수 있습니다.')
             require(db, 'seats', target_seat_id)
             if row['seat_id'] == target_seat_id:
                 return row

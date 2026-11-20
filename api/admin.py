@@ -117,7 +117,7 @@ def logout(request: Request, response: Response, session: AdminSession):
 
 @router.patch('/reservations/{reservation_id}', response_model=Reservation, tags=[ADMIN_RESERVATION],
               summary='관리자 예약 시간·상태 수정',
-              description='AdminSession이 필요합니다. `starts_at`, `ends_at`, `def_time`, `status` 중 변경할 값을 입력합니다. 생략한 값은 유지하며 `{}`와 명시적 null은 422입니다.\n\n- `def_time`: 시작 시각부터의 총 이용시간(초). 시작 10시·7200초면 종료 12시입니다.\n- `def_time`과 `ends_at`은 동시 입력할 수 없습니다.\n- 시작과 종료의 순서·정수 범위·같은 좌석의 CONFIRMED 시간 중복을 검사합니다.\n- 상태 입력은 CONFIRMED·ENDED·CANCELLED입니다. 시작 전 예약을 ENDED로 만들 수 없습니다.\n- 종료·취소·만료된 예약도 관리자 수정이 가능합니다. 복구 시에도 충돌·다중 활성 예약 검증을 적용합니다.\n- 생성 당시 정책·연장 사용 횟수·확정 시각은 유지하며 관리자 시간 증가는 연장 횟수를 소비하지 않습니다.\n\n기존 일반 `PATCH /reservations/{id}`는 제거되었습니다. 좌석·소유자 변경은 이 모델에 없습니다.')
+              description='AdminSession이 필요합니다. `starts_at`, `ends_at`, `def_time`, `status` 중 변경할 값을 입력합니다. 생략한 값은 유지하며 `{}`와 명시적 null은 422입니다.\n\n- `def_time`: 시작 시각부터의 총 이용시간(초). 시작 10시·7200초면 종료 12시입니다.\n- `def_time`과 `ends_at`은 동시 입력할 수 없습니다.\n- 시작과 종료의 순서·정수 범위·같은 좌석의 CONFIRMED 시간 중복을 검사합니다.\n- 상태 입력은 CONFIRMED·ENDED·CANCELLED입니다. 예정·사용 중·만료·취소·종료 상태와 관계없이 수정할 수 있습니다.\n- 종료·취소·만료된 예약도 관리자 수정이 가능합니다. 복구 시에도 충돌·다중 활성 예약 검증을 적용합니다.\n- 생성 당시 정책·연장 사용 횟수·확정 시각은 유지하며 관리자 시간 증가는 연장 횟수를 소비하지 않습니다.\n\n기존 일반 `PATCH /reservations/{id}`는 제거되었습니다. 좌석·소유자 변경은 이 모델에 없습니다.')
 def edit(request: Request, reservation_id: Identifier, body: AdminReservationEdit, session: AdminSession):
     fields = body.model_fields_set
     if not fields or any(getattr(body, name) is None for name in fields):
@@ -136,8 +136,6 @@ def edit(request: Request, reservation_id: Identifier, body: AdminReservationEdi
         status = body.status if 'status' in fields else old['status']
         if start >= end:
             raise APIError(422, 'INVALID_DURATION', '시작 시각은 종료 시각보다 빨라야 합니다.')
-        if status == 'ENDED' and start > db.execute('SELECT unixepoch()').fetchone()[0]:
-            raise APIError(422, 'INVALID_STATUS', '시작 전 예약은 종료 상태로 바꿀 수 없습니다.')
         if (start, end, status) == (old['starts_at'], old['ends_at'], old['status']):
             return old
         db.execute('INSERT INTO reservation_admin_context VALUES(?,?)',
