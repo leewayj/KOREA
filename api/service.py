@@ -26,6 +26,18 @@ def reservation(db, reservation_id, now=None):
     return project(row, now)
 
 
+
+def owned_reservation(db, reservation_id, owner_s_id):
+    if owner_s_id is None:
+        raise APIError(401, 'AUTH_REQUIRED', '예약을 변경하려면 로그인해야 합니다.')
+    row = reservation(db, reservation_id)
+    owner = db.execute('SELECT s_id FROM reservation_owners WHERE reservation_id=?',
+                       (reservation_id,)).fetchone()
+    if owner is None or owner['s_id'] != owner_s_id:
+        raise APIError(403, 'RESERVATION_FORBIDDEN', '본인의 예약만 변경할 수 있습니다.')
+    return row
+
+
 def seat_rows(db, now, floor_id=None, room_id=None, seat_id=None, limit=100, offset=0):
     rows = db.execute('''SELECT s.id AS seat_id,f.code AS floor_code,f.name AS floor_name,
         rm.code AS room_code,rm.name AS room_name,s.number AS seat_number,
@@ -139,19 +151,13 @@ class Service:
                 WHERE s_id=? ORDER BY used_at DESC,id DESC LIMIT ? OFFSET ?
             ''', (s_id, limit, offset))]
 
-    def duration(self, reservation_id, seconds):
-        return self._change_duration(reservation_id, seconds, extending=False)
-
-    def extend(self, reservation_id):
-        return self._change_duration(reservation_id, None, extending=True)
-
-    def _change_duration(self, reservation_id, seconds, *, extending):
+    def extend(self, reservation_id, *, owner_s_id):
         with connection(self.path, write=True) as db:
-            row = reservation(db, reservation_id)
+            row = owned_reservation(db, reservation_id, owner_s_id)
             now = db.execute('SELECT unixepoch()').fetchone()[0]
             if row['status'] != 'CONFIRMED' or row['ends_at'] <= now:
                 raise APIError(409, 'RESERVATION_CLOSED', '종료·취소·만료된 예약은 수정할 수 없습니다.')
-            duration = row['def_time'] + row['policy_default_duration_seconds'] if extending else seconds
+            duration = row['def_time'] + row['policy_default_duration_seconds']
             if duration > 9223372036854775807 - row['starts_at']:
                 raise APIError(422, 'INVALID_DURATION', '이용시간이 저장 가능한 범위를 초과합니다.')
             if row['starts_at'] + duration <= now:
@@ -159,9 +165,9 @@ class Service:
             db.execute('UPDATE reservations SET def_time = ? WHERE id = ?', (duration, reservation_id))
             return reservation(db, reservation_id)
 
-    def transition(self, reservation_id, status):
+    def transition(self, reservation_id, status, *, owner_s_id):
         with connection(self.path, write=True) as db:
-            row = reservation(db, reservation_id)
+            row = owned_reservation(db, reservation_id, owner_s_id)
             if row['status'] == status:
                 return row  # Safe repeat: preserve the original transition timestamp.
             if row['status'] != 'CONFIRMED' or row['effective_status'] != 'IN_USE':
@@ -169,9 +175,9 @@ class Service:
             db.execute('UPDATE reservations SET status = ? WHERE id = ?', (status, reservation_id))
             return reservation(db, reservation_id)
 
-    def move(self, reservation_id, target_seat_id):
+    def move(self, reservation_id, target_seat_id, *, owner_s_id):
         with connection(self.path, write=True) as db:
-            row = reservation(db, reservation_id)
+            row = owned_reservation(db, reservation_id, owner_s_id)
             if row['status'] != 'CONFIRMED' or row['effective_status'] != 'IN_USE':
                 raise APIError(409, 'RESERVATION_CLOSED', '종료·취소·만료된 예약은 이동할 수 없습니다.')
             require(db, 'seats', target_seat_id)

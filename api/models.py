@@ -55,6 +55,7 @@ class AdminLoginResponse(BaseModel):
 class AdminReservationEdit(Input):
     starts_at: Annotated[int, Field(strict=True, ge=0, le=9223372036854775807)] | None = None
     ends_at: Annotated[int, Field(strict=True, ge=0, le=9223372036854775807)] | None = None
+    def_time: PositiveInteger | None = Field(default=None, description='시작 시각부터의 총 이용시간(초). ends_at과 동시 입력 불가.')
     status: Literal['CONFIRMED', 'ENDED', 'CANCELLED'] | None = None
 
 
@@ -131,10 +132,6 @@ class CleanupResult(BaseModel):
 class ReservationCreate(Input):
     seat_id: PositiveInteger = Field(description='전역 고유 좌석 ID. 방 안의 표시 번호와 다릅니다.')
     def_time: PositiveInteger | None = Field(default=None, description='총 이용시간(초). 생략 또는 null이면 현재 관리자 설정 기본 시간.')
-
-
-class ReservationEdit(Input):
-    def_time: PositiveInteger = Field(description='예약 시작부터의 총 이용시간(초). 현재 시각부터의 시간이 아닙니다.')
 
 
 class ReservationMove(Input):

@@ -12,15 +12,15 @@ ADMIN_SETTINGS = '관리자 예약 설정'
 ADMIN_MAINTENANCE = '관리자 데이터 정리'
 
 OPENAPI_TAGS = [
-    {'name': ADMIN_SETTINGS, 'description': '관리자만 기본 예약 시간과 최대 연장 횟수를 조회·수정합니다. 변경은 새 예약부터 적용합니다.'},
-    {'name': SENSOR, 'description': '인증 없이 착석 상태를 수신하고 ESP32에 현재·다음 예약정보를 전달합니다.'},
-    {'name': SERVER, 'description': '서버와 데이터베이스 연결 상태 확인.'},
-    {'name': USER_AUTH, 'description': '사용자 별도 등록, 학번 로그인, 로그아웃. 실제 학생 본인 여부는 검증하지 않습니다.'},
-    {'name': MY_DATA, 'description': 'DemoSession 토큰으로 내 프로필·이용 중 예약·예약 및 이동 기반 좌석 이력을 조회합니다.'},
-    {'name': LOCATION, 'description': '로그인 없이 층·방·좌석 위치와 현재·다음 예약, 시간 안내를 조회합니다.'},
-    {'name': RESERVATION_READ, 'description': '공개 예약 목록·상세·좌석별 이력 조회.'},
-    {'name': RESERVATION_WRITE, 'description': '예약 생성과 이용시간 변경·연장·좌석 이동·취소·종료. 생성은 DemoSession 필수이며 다른 동작의 기존 접근 정책은 유지합니다.'},
-    {'name': ADMIN_AUTH, 'description': '관리자 ID·비밀번호 로그인과 AdminSession 확인·로그아웃.'},
-    {'name': ADMIN_RESERVATION, 'description': 'AdminSession 토큰으로 사용자·시각 지정 등록, 시각·상태 수정, 개별 영구 삭제.'},
-    {'name': ADMIN_MAINTENANCE, 'description': 'AdminSession 토큰으로 만료 예약·세션 정리. 기본은 삭제하지 않는 미리보기입니다.'},
+    {'name': SERVER, 'description': '서버와 데이터베이스 접근 상태를 확인합니다.'},
+    {'name': LOCATION, 'description': '공개 층·방·좌석 조회. 현재 예약과 다음 예정 예약, 남은 시간과 마지막 저장 착석 상태를 제공합니다.'},
+    {'name': RESERVATION_READ, 'description': '전체·좌석별 예약 목록과 특정 예약을 조회합니다. 로그인 사용자 전용 목록과 구분합니다.'},
+    {'name': USER_AUTH, 'description': '프로필 등록, 시연용 학번 로그인과 로그아웃. 실제 학생 신원 인증은 아닙니다.'},
+    {'name': MY_DATA, 'description': 'DemoSession으로 내 프로필·IN_USE 예약·독립 이용 좌석 이력을 조회합니다.'},
+    {'name': RESERVATION_WRITE, 'description': '일반 예약 생성·연장·이동·취소·종료. 생성 경로 2개는 같은 기능입니다. 임의 시간 수정은 관리자 API에서 처리합니다. 생성·연장·이동·취소·종료는 DemoSession이 필요하며 변경은 본인 예약만 허용합니다.'},
+    {'name': SENSOR, 'description': '인증 없는 ESP32 착석 수신과 예약정보 응답. 장치 키·혼잡도·LED 목표 상태는 제공하지 않습니다.'},
+    {'name': ADMIN_AUTH, 'description': '관리자 ID·비밀번호 로그인과 AdminSession 조회·로그아웃. 일반 사용자 세션과 분리됩니다.'},
+    {'name': ADMIN_SETTINGS, 'description': '관리자 기본 예약 시간·연장 횟수 조회/수정. 변경은 새 예약부터 적용하고 기존 예약은 생성 당시 정책을 보존합니다.'},
+    {'name': ADMIN_RESERVATION, 'description': 'AdminSession으로 가상 예약 등록·시간/상태 수정·영구 삭제. 조회는 공통 예약 조회 경로를 사용합니다.'},
+    {'name': ADMIN_MAINTENANCE, 'description': 'AdminSession으로 만료 세션과 보관기간 지난 예약을 정리합니다. 기본은 삭제 없는 대상 건수 미리보기입니다.'},
 ]

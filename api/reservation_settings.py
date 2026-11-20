@@ -13,7 +13,7 @@ router = APIRouter(prefix='/admin', tags=[ADMIN_SETTINGS], responses={
 
 
 @router.get('/reservation-settings', response_model=ReservationSettings,
-            summary='기본 예약 시간·최대 연장 횟수 조회')
+            summary='관리자 기본 예약 시간·연장 한도 조회', description='AdminSession이 필요합니다. `default_duration_seconds`, `max_extensions`, `updated_at`, `updated_by`를 반환합니다. 초기값은 21600초(6시간)·2회이며 관리자가 변경한 실제 저장값을 조회합니다.')
 def get_settings(request: Request, response: Response, session: AdminSession):
     response.headers['Cache-Control'] = 'no-store'
     with connection(request.app.state.service.path) as db:
@@ -21,8 +21,8 @@ def get_settings(request: Request, response: Response, session: AdminSession):
 
 
 @router.patch('/reservation-settings', response_model=ReservationSettings,
-              summary='새 예약에 적용할 기본 예약 시간·최대 연장 횟수 수정',
-              description='초 단위 양의 정수와 0 이상의 연장 횟수. 생략한 값은 유지하며 기존 예약에는 소급하지 않습니다.')
+              summary='관리자 기본 예약 시간·연장 한도 수정',
+              description='AdminSession이 필요합니다. `default_duration_seconds`는 양의 정수 초, `max_extensions`는 0 이상의 정수입니다. 0회면 일반 연장을 허용하지 않습니다. 생략한 필드는 유지하고 `{}`·명시적 null·잘못된 자료형은 422입니다.\n\n변경은 **이후 새로 만드는 예약부터** 적용합니다. 기존 활성·예정 예약은 생성 당시 기본 시간·한도를 유지합니다. 예약 생성에서 명시적 def_time을 보내면 그 시간을 사용하므로 이 설정은 기본값이며 총 이용시간 상한이 아닙니다. 실제 값이 바뀔 때만 수정 시각·관리자 ID를 갱신합니다.')
 def edit_settings(request: Request, response: Response, body: ReservationSettingsEdit, session: AdminSession):
     fields = body.model_fields_set
     if not fields or any(getattr(body, field) is None for field in fields):

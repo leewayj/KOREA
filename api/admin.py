@@ -81,7 +81,7 @@ def require_admin(request: Request,
 AdminSession = Annotated[dict, Depends(require_admin)]
 
 
-@router.post('/auth/login', response_model=AdminLoginResponse, tags=[ADMIN_AUTH], summary='관리자 ID·비밀번호 로그인')
+@router.post('/auth/login', response_model=AdminLoginResponse, tags=[ADMIN_AUTH], summary='관리자 ID·비밀번호 로그인', description='`username`과 `password`를 입력해 관리자 전용 access_token을 받습니다. 토큰은 1시간 유효합니다. 사용자 학번 로그인과 계정·세션이 분리되어 있으며 일반 사용자 토큰으로 관리자 권한을 얻을 수 없습니다.\n\nAuthorize의 AdminSession에 토큰 값만 입력하세요. 계정 생성은 이 API가 아닌 서버의 로컬 관리자 등록 명령으로 수행합니다.')
 def login(request: Request, response: Response, body: AdminLoginRequest):
     with connection(request.app.state.service.path) as db:
         account = db.execute('SELECT * FROM admins WHERE username=?', (body.username,)).fetchone()
@@ -100,14 +100,14 @@ def login(request: Request, response: Response, body: AdminLoginRequest):
             'created_at': account['created_at'], 'session_expires_at': expires_at}}
 
 
-@router.get('/auth/me', response_model=AdminIdentity, tags=[ADMIN_AUTH], summary='현재 관리자 로그인 확인')
+@router.get('/auth/me', response_model=AdminIdentity, tags=[ADMIN_AUTH], summary='현재 관리자 세션 확인', description='AdminSession 토큰을 검사하고 관리자 ID·계정 생성 시각·세션 만료 시각을 반환합니다. 토큰 누락·불일치·만료는 401, 일반 사용자 토큰은 403입니다.')
 def me(response: Response, session: AdminSession):
     response.headers['Cache-Control'] = 'no-store'
     return session['admin']
 
 
-@router.post('/auth/logout', response_model=LogoutResponse, tags=[ADMIN_AUTH], summary='현재 관리자 세션 종료',
-             dependencies=[Depends(no_logout_body)])
+@router.post('/auth/logout', response_model=LogoutResponse, tags=[ADMIN_AUTH], summary='현재 관리자 세션 로그아웃',
+             dependencies=[Depends(no_logout_body)], description='AdminSession이 필요하며 본문을 보내지 않습니다. 현재 관리자 토큰의 세션 하나만 삭제합니다. 관리자 계정과 다른 세션·예약·설정은 유지합니다.')
 def logout(request: Request, response: Response, session: AdminSession):
     with connection(request.app.state.service.path, write=True) as db:
         db.execute('DELETE FROM admin_sessions WHERE token_hash=?', (session['token_hash'],))
@@ -116,16 +116,23 @@ def logout(request: Request, response: Response, session: AdminSession):
 
 
 @router.patch('/reservations/{reservation_id}', response_model=Reservation, tags=[ADMIN_RESERVATION],
-              summary='관리자 예약 시작·종료 시각 및 상태 변경',
-              description='UTC Unix 초. 생략한 필드는 유지합니다. 확정 예약끼리 시간 중복은 허용하지 않습니다.')
+              summary='관리자 예약 시간·상태 수정',
+              description='AdminSession이 필요합니다. `starts_at`, `ends_at`, `def_time`, `status` 중 변경할 값을 입력합니다. 생략한 값은 유지하며 `{}`와 명시적 null은 422입니다.\n\n- `def_time`: 시작 시각부터의 총 이용시간(초). 시작 10시·7200초면 종료 12시입니다.\n- `def_time`과 `ends_at`은 동시 입력할 수 없습니다.\n- 시작과 종료의 순서·정수 범위·같은 좌석의 CONFIRMED 시간 중복을 검사합니다.\n- 상태 입력은 CONFIRMED·ENDED·CANCELLED입니다. 시작 전 예약을 ENDED로 만들 수 없습니다.\n- 종료·취소·만료된 예약도 관리자 수정이 가능합니다. 복구 시에도 충돌·다중 활성 예약 검증을 적용합니다.\n- 생성 당시 정책·연장 사용 횟수·확정 시각은 유지하며 관리자 시간 증가는 연장 횟수를 소비하지 않습니다.\n\n기존 일반 `PATCH /reservations/{id}`는 제거되었습니다. 좌석·소유자 변경은 이 모델에 없습니다.')
 def edit(request: Request, reservation_id: Identifier, body: AdminReservationEdit, session: AdminSession):
     fields = body.model_fields_set
     if not fields or any(getattr(body, name) is None for name in fields):
         raise APIError(422, 'VALIDATION_ERROR', '변경할 필드를 하나 이상 입력하고 null은 보내지 마세요.')
+    if 'def_time' in fields and 'ends_at' in fields:
+        raise APIError(422, 'VALIDATION_ERROR', 'def_time과 ends_at은 함께 입력할 수 없습니다.')
     with connection(request.app.state.service.path, write=True) as db:
         old = reservation(db, reservation_id)
         start = body.starts_at if 'starts_at' in fields else old['starts_at']
-        end = body.ends_at if 'ends_at' in fields else old['ends_at']
+        if 'def_time' in fields:
+            if body.def_time > 9223372036854775807-start:
+                raise APIError(422, 'INVALID_DURATION', '이용시간이 저장 가능한 범위를 초과합니다.')
+            end = start + body.def_time
+        else:
+            end = body.ends_at if 'ends_at' in fields else old['ends_at']
         status = body.status if 'status' in fields else old['status']
         if start >= end:
             raise APIError(422, 'INVALID_DURATION', '시작 시각은 종료 시각보다 빨라야 합니다.')
@@ -142,7 +149,7 @@ def edit(request: Request, reservation_id: Identifier, body: AdminReservationEdi
 
 
 @router.post('/reservations', response_model=Reservation, status_code=201, tags=[ADMIN_RESERVATION],
-             summary='관리자가 사용자·좌석·시작·종료 시각을 지정하여 예약 등록')
+             summary='관리자 가상 예약 생성', description='AdminSession이 필요합니다. `seat_id`, 등록된 사용자 `s_id`, `starts_at`, `ends_at`을 입력합니다. 시각은 UTC Unix 초 정수이며 과거·현재·미래 시각을 지정할 수 있습니다.\n\n시작 < 종료, 동일 좌석 CONFIRMED 예약의 시간 중복 및 사용자의 다중 활성 예약을 검사합니다. 앞 예약 종료와 다음 시작이 같으면 허용합니다. CONFIRMED로 생성하고 현재 설정의 기본 시간·연장 한도를 함께 저장합니다. 실제 이용시간은 입력한 종료−시작입니다. 성공은 201입니다.')
 def create_reservation(request: Request, response: Response, body: AdminReservationCreate, session: AdminSession):
     if body.starts_at >= body.ends_at:
         raise APIError(422,'INVALID_DURATION','시작 시각은 종료 시각보다 빨라야 합니다.')
@@ -167,7 +174,7 @@ async def no_delete_body(request: Request):
 
 
 @router.delete('/reservations/{reservation_id}',response_model=ReservationDeleted, tags=[ADMIN_RESERVATION],
-               summary='관리자가 특정 예약과 연결 이력을 영구 삭제',dependencies=[Depends(no_delete_body)])
+               summary='관리자 예약 영구 삭제',dependencies=[Depends(no_delete_body)], description='AdminSession이 필요하며 **본문 없이 호출**합니다. 상태와 무관하게 예약과 연결된 소유자·이동 기록·예약별 정책·시간 캐시·이력 진행 정보를 연쇄 삭제합니다. 사용자 계정·현재 기본 설정·독립 `user_seat_history`와 좌석·착석 상태는 유지합니다.\n\n성공 시 `{"deleted_reservation_id":1}`을 반환합니다. 없는 예약 또는 반복 삭제는 404입니다. 삭제를 자연 만료로 판정하지 않습니다.')
 def delete_reservation(request: Request, reservation_id: Identifier, session: AdminSession):
     with connection(request.app.state.service.path,write=True) as db:
         reservation(db,reservation_id)
