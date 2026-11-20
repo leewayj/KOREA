@@ -24,7 +24,7 @@ def seat_history(request: Request, response: Response, session: StudentSession,
 
 
 @router.get('/reservations', response_model=list[Reservation], tags=[MY_DATA], summary='내 이용 중 예약 조회',
-            description='DemoSession에 연결된 본인의 **IN_USE 예약만** 반환합니다. 예정 SCHEDULED·종료 ENDED·취소 CANCELLED 예약은 포함하지 않으며 없으면 빈 배열입니다. 예약 ID 내림차순이며 `limit`·`offset`을 지원합니다. 전체 공개 예약 목록은 `GET /reservations`입니다.')
+            description='DemoSession에 연결된 본인의 **IN_USE 예약만** 반환합니다. 예정 SCHEDULED·종료 ENDED·취소 CANCELLED 예약은 포함하지 않으며 없으면 빈 배열입니다. 예약 ID 내림차순이며 `limit`·`offset`을 지원합니다.')
 def in_use(request: Request, response: Response, session: StudentSession,
            limit: Annotated[int, Query(ge=1, le=500)] = 100,
            offset: Annotated[int, Query(ge=0, le=9223372036854775807)] = 0):

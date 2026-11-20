@@ -55,7 +55,7 @@ def register(request: Request, response: Response, body: UserRegisterRequest):
 
 
 @router.post('/login', response_model=LoginResponse, tags=[USER_AUTH], summary='등록된 학번형 ID로 시연 로그인',
-             description='`{"s_id":"2026123456"}`을 보냅니다. 등록된 사용자에게 1시간 유효한 access_token과 프로필을 반환합니다. 비밀번호 없는 시연용 식별이며 해당 ID를 아는 사람의 실제 신원은 검증하지 않습니다. 미등록 ID는 404입니다.\n\nAuthorize의 DemoSession에 토큰 값만 입력하세요. 같은 사용자의 여러 세션을 허용하며 로그인 시 만료된 사용자 세션을 정리합니다.')
+             description='`{"s_id":"학번 10자리"}`를 보냅니다. 등록된 사용자에게 1시간 유효한 access_token과 프로필을 반환합니다. 비밀번호 없는 시연용 식별이며 해당 ID를 아는 사람의 실제 신원은 검증하지 않습니다. 미등록 ID는 404입니다.\n\n같은 사용자의 여러 세션을 허용하며 로그인 시 만료된 사용자 세션을 정리합니다.')
 def login(request: Request, response: Response, body: LoginRequest):
     token = secrets.token_urlsafe(32)
     with connection(request.app.state.service.path, write=True) as db:
