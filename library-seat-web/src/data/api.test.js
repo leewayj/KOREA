@@ -1,7 +1,7 @@
 import { test, beforeEach, afterEach } from 'node:test'
 import assert from 'node:assert/strict'
 import { login, request, session, logout } from '../api.js'
-import { reserveApiSeat, fetchMyReservation } from './reservationApi.js'
+import { reserveApiSeat, fetchMyReservation, extendApiReservation } from './reservationApi.js'
 
 let values
 const originalStorage = globalThis.sessionStorage
@@ -51,4 +51,16 @@ test('restoring a reservation queries the current user endpoint', async (context
     return Response.json([{ id: 8, effective_status: 'IN_USE' }])
   })
   assert.equal((await fetchMyReservation()).id, 8)
+})
+
+test('reservation extension sends the login token without a request body', async (context) => {
+  values.set('korea-user-session', JSON.stringify({ access_token: 'current-user' }))
+  context.mock.method(globalThis, 'fetch', async (url, options) => {
+    assert.equal(url, '/reservations/8/extend')
+    assert.equal(options.method, 'POST')
+    assert.equal(options.headers.Authorization, 'Bearer current-user')
+    assert.equal(options.body, undefined)
+    return Response.json({ id: 8, extension_count: 1 })
+  })
+  assert.equal((await extendApiReservation(8)).extension_count, 1)
 })

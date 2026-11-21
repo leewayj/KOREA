@@ -3,9 +3,6 @@ import { Button } from "./components/Button.jsx";
 import InputField from "./components/InputField.jsx";
 import {
   MINUTE,
-  rooms,
-  storageKey,
-  loadData,
   seatsFor,
   summary,
   remaining,
@@ -14,9 +11,10 @@ import {
   parseTime,
   dateTime,
   validateReservation,
-  saveReservation,
   validSettings,
 } from "./data/store.js";
+
+import { adminRequest, loadAdminData } from "./data/adminApi.js";
 
 const titles = {
   home: "도서관 좌석 관리",
@@ -27,15 +25,13 @@ const titles = {
   settings: "전체 설정",
 };
 function routeFromHash() {
-  const [page = "home", roomId = "reading-2", number = "66"] = location.hash
+  const [page = "home", roomId, number] = location.hash
     .replace(/^#\/?/, "")
     .split("/");
   return {
     page: titles[page] ? page : "home",
-    roomId: rooms.some((r) => r.id === roomId) ? roomId : "reading-2",
-    number: [66, 67, 68, 69, 70, 71].includes(Number(number))
-      ? Number(number)
-      : 66,
+    roomId,
+    number,
   };
 }
 function Card({ children, className = "" }) {
@@ -96,7 +92,7 @@ function Home({ data, now, go }) {
           <img src="/assets/settings.svg" alt="" />
         </button>
       </div>
-      {rooms.map((room) => {
+      {data.rooms.map((room) => {
         const seats = seatsFor(data, room.id, now),
           s = summary(seats);
         return (
@@ -110,7 +106,7 @@ function Home({ data, now, go }) {
               <Congestion seats={seats} />
               <div className="stats">
                 {[
-                  [6, "관리 좌석"],
+                  [seats.length, "관리 좌석"],
                   [s.reserved, "예약 중"],
                   [s.attention, "확인 필요"],
                 ].map(([value, label]) => (
@@ -141,7 +137,7 @@ function RoomPage({ room, seats, now, go }) {
       <h2 className="room-heading">{room.name}</h2>
       <Card>
         <Congestion seats={seats} />
-        <p className="muted tiny">시연 데이터 · 실제 센서 미연결</p>
+
         <div className="metrics">
           {groups.map(([label, items]) => (
             <div key={label}>
@@ -164,7 +160,7 @@ function RoomPage({ room, seats, now, go }) {
       </Card>
       <div className="filters">
         {[
-          ["all", "전체", 6],
+          ["all", "전체", seats.length],
           ["reserved", "예약 중", s.reserved],
           ["attention", "확인 필요", s.attention],
         ].map(([key, label, count]) => (
@@ -231,8 +227,7 @@ function SeatPage({ data, room, seat, now, go, commit }) {
         </span>
       </div>
       <p className="muted subtitle">
-        {room.name} · {inputTime(now).slice(0, 10).replaceAll("-", ".")} · 가상
-        데이터
+        {room.name} · {inputTime(now).slice(0, 10).replaceAll("-", ".")}
       </p>
       <Card>
         <p className="muted subtitle">남은 예약 시간</p>
@@ -300,15 +295,12 @@ function SeatPage({ data, room, seat, now, go, commit }) {
             취소
           </Button>
           <Button
-            onPress={() => {
-              commit(
-                {
-                  ...data,
-                  reservations: data.reservations.filter((x) => x.id !== r.id),
-                },
+            onPress={async () => {
+              if (await commit(
+                `/admin/reservations/${r.id}`,
+                { method: "DELETE" },
                 "예약을 삭제했습니다.",
-              );
-              dialog.current.close();
+              )) dialog.current.close();
             }}
           >
             예약 삭제
@@ -322,8 +314,9 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
   const original = edit ? seat.reservation : null;
   const [base] = useState(() => Math.floor(Date.now() / MINUTE) * MINUTE);
   const [number, setNumber] = useState(
-    edit ? seat.number : seat.reservation ? 67 : seat.number,
+    seat?.number ?? room.seats[0]?.seat_number ?? "",
   );
+  const [studentId, setStudentId] = useState("");
   const [start, setStart] = useState(inputTime(original?.startsAt ?? base));
   const [end, setEnd] = useState(
     inputTime(original?.endsAt ?? base + data.settings.duration * MINUTE),
@@ -348,18 +341,18 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
     .filter(
       (r) =>
         r.roomId === room.id &&
-        r.seat === Number(number) &&
+        r.seat === number &&
         r.id !== original?.id &&
         r.startsAt > now,
     )
     .sort((a, b) => a.startsAt - b.startsAt)[0];
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
     const candidate = {
       id: original?.id,
       roomId: room.id,
-      seat: Number(number),
-      startsAt,
+      seat: number,
+      startsAt: edit ? original.startsAt : startsAt,
       endsAt,
     };
     const message = validateReservation(data, candidate);
@@ -367,11 +360,17 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
       setError(message);
       return;
     }
-    commit(
-      saveReservation(data, candidate),
+    const times = { starts_at: candidate.startsAt / 1000, ends_at: endsAt / 1000 };
+    const seatId = room.seats.find((item) => item.seat_number === number).seat_id;
+    const saved = await commit(
+      edit ? `/admin/reservations/${original.id}` : "/admin/reservations",
+      { method: edit ? "PATCH" : "POST", body: edit ? { ends_at: times.ends_at } : {
+        ...times, seat_id: seatId, s_id: studentId,
+      } },
       edit ? "예약 시간을 변경했습니다." : "가상 예약을 등록했습니다.",
+      setError,
     );
-    go(`seat/${room.id}/${number}`);
+    if (saved) go(`seat/${room.id}/${number}`);
   }
   return (
     <main className={edit ? "compact" : ""}>
@@ -391,18 +390,15 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
           </Card>
         ) : (
           <Card>
-            <InputField
-              label="좌석 번호"
-              type="number"
-              min="66"
-              max="71"
-              step="1"
-              value={number}
-              onChange={(e) => setNumber(e.target.value)}
-            />
-            <p className="muted small">
-              현재 열람실의 좌석 번호를 입력하세요. (66~71)
-            </p>
+            <label>좌석 번호
+              <select value={number} onChange={(e) => setNumber(e.target.value)} required>
+                {room.seats.map((item) => (
+                  <option key={item.seat_id} value={item.seat_number}>{item.seat_number}번</option>
+                ))}
+              </select>
+            </label>
+            <InputField label="등록된 학번" value={studentId} onChange={(e) => setStudentId(e.target.value)} />
+
           </Card>
         )}
         <Card>
@@ -535,8 +531,13 @@ function Settings({ data, commit }) {
           }
           setError("");
           commit(
-            { ...data, settings },
+            "/admin/reservation-settings",
+            { method: "PATCH", body: {
+              default_duration_seconds: settings.duration * 60,
+              max_extensions: settings.maxExtensions,
+            } },
             "설정을 저장했습니다. 새 예약부터 적용됩니다.",
+            setError,
           );
         }}
       >
@@ -583,13 +584,17 @@ function Settings({ data, commit }) {
   );
 }
 export default function App() {
-  const [data, setData] = useState(loadData),
+  const [token, setToken] = useState(() => sessionStorage.getItem("korea-admin-session")),
+    [data, setData] = useState(null),
+    [error, setError] = useState(""),
+    [busy, setBusy] = useState(false),
+    pending = useRef(false),
     [route, setRoute] = useState(routeFromHash),
     [now, setNow] = useState(Date.now),
     [notice, setNotice] = useState("");
   const { page, roomId, number } = route,
-    room = rooms.find((r) => r.id === roomId),
-    seats = seatsFor(data, roomId, now),
+    room = data?.rooms.find((r) => r.id === roomId),
+    seats = room ? seatsFor(data, roomId, now) : [],
     seat = seats.find((s) => s.number === number);
   const go = (path) => {
     location.hash = path;
@@ -612,17 +617,100 @@ export default function App() {
     const t = setTimeout(() => setNotice(""), 4000);
     return () => clearTimeout(t);
   }, [notice]);
-  function commit(next, message) {
-    setData(next);
+  function clearSession() {
+    sessionStorage.removeItem("korea-admin-session");
+    setToken(null);
+    setData(null);
+    setError("");
+  }
+  useEffect(() => {
+    if (!token) return;
+    const controller = new AbortController();
+    let loading = false;
+    async function refresh() {
+      if (loading || pending.current) return;
+      loading = true;
+      try {
+        const next = await loadAdminData(token, controller.signal);
+        if (!controller.signal.aborted && !pending.current) {
+          setData(next);
+          setError("");
+        }
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (error.status === 401) clearSession();
+        setError(error.message);
+      } finally {
+        loading = false;
+      }
+    }
+    refresh();
+    const timer = setInterval(refresh, 5000);
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+    };
+  }, [token]);
+
+  async function login(event) {
+    event.preventDefault();
+    if (busy) return;
+    const fields = new FormData(event.currentTarget);
+    setBusy(true);
+    setError("");
     try {
-      localStorage.setItem(storageKey, JSON.stringify(next));
-      setNotice(message);
-    } catch {
-      setNotice(
-        `${message} 브라우저 저장 공간을 사용할 수 없어 새로고침하면 초기화됩니다.`,
-      );
+      const result = await adminRequest("/admin/auth/login", {
+        method: "POST", body: { username: fields.get("username"), password: fields.get("password") },
+      });
+      sessionStorage.setItem("korea-admin-session", result.access_token);
+      setToken(result.access_token);
+    } catch (error) {
+      setError(error.message);
+    } finally {
+      setBusy(false);
     }
   }
+
+  async function commit(path, options, message, showError = setError) {
+    if (pending.current) return false;
+    pending.current = true;
+    try {
+      await adminRequest(path, { ...options, token });
+    } catch (error) {
+      if (error.status === 401) clearSession();
+      showError(error.message);
+      pending.current = false;
+      return false;
+    }
+    try {
+      setData(await loadAdminData(token));
+      setNotice(message);
+    } catch {
+      setNotice(`${message} 목록을 다시 불러오는 중입니다.`);
+    } finally {
+      pending.current = false;
+    }
+    return true;
+  }
+
+  if (!token) return (
+    <div className="app-shell">
+      <main className="compact">
+        <h1>관리자 로그인</h1>
+        <form onSubmit={login}>
+          <Card>
+            <label>관리자 ID <input name="username" autoComplete="username" required /></label>
+            <label>비밀번호 <input name="password" type="password" autoComplete="current-password" required /></label>
+          </Card>
+          {error && <p role="alert">{error}</p>}
+          <Button type="submit" isDisabled={busy}>로그인</Button>
+        </form>
+      </main>
+    </div>
+  );
+  if (!data) return <main className="compact"><p role="status">{error || "예약 정보를 불러오는 중입니다."}</p></main>;
+  const invalidRoute = !["home", "settings"].includes(page) &&
+    (!room || (["seat", "edit"].includes(page) && !seat));
   const back = () =>
     go(
       page === "rooms" || page === "settings"
@@ -641,7 +729,17 @@ export default function App() {
           <h1>{titles[page]}</h1>
         </header>
       )}
-      {page === "home" ? (
+      <Button variant="neutral" onPress={async () => {
+        try {
+          await adminRequest("/admin/auth/logout", { method: "POST", token });
+        } finally {
+          clearSession();
+        }
+      }}>로그아웃</Button>
+      {error && <p role="alert">{error}</p>}
+      {invalidRoute ? (
+        <main><p>해당 열람실 또는 좌석을 찾을 수 없습니다.</p><Button onPress={() => go("home")}>홈으로</Button></main>
+      ) : page === "home" ? (
         <Home data={data} now={now} go={go} />
       ) : page === "rooms" ? (
         <RoomPage

@@ -92,10 +92,12 @@ export function activeReservation(data, roomId, seat, now) {
   );
 }
 export function seatsFor(data, roomId, now) {
-  return seatNumbers.map((number) => {
+  const apiSeats = data.rooms?.find((room) => room.id === roomId)?.seats;
+  return (apiSeats ?? seatNumbers).map((item) => {
+    const number = apiSeats ? item.seat_number : item;
     const reservation = activeReservation(data, roomId, number, now);
-    const occupied = [66, 70].includes(number);
-    const unknown = number === 71;
+    const occupied = apiSeats ? item.occupancy_state === "OCCUPIED" : [66, 70].includes(number);
+    const unknown = apiSeats ? !["OCCUPIED", "EMPTY"].includes(item.occupancy_state) : number === 71;
     const expired = data.reservations.some(
       (r) => r.roomId === roomId && r.seat === number && r.endsAt <= now,
     );
@@ -125,10 +127,11 @@ export function summary(seats) {
 }
 export function validateReservation(data, candidate) {
   if (
-    !rooms.some((r) => r.id === candidate.roomId) ||
-    !seatNumbers.includes(candidate.seat)
+    data.rooms
+      ? !data.rooms.find((room) => room.id === candidate.roomId)?.seats.some((seat) => seat.seat_number === candidate.seat)
+      : !rooms.some((r) => r.id === candidate.roomId) || !seatNumbers.includes(candidate.seat)
   )
-    return "관리 좌석 번호 66~71 중 하나를 입력하세요.";
+    return data.rooms ? "현재 열람실의 좌석을 선택하세요." : "관리 좌석 번호 66~71 중 하나를 입력하세요.";
   if (
     !Number.isFinite(candidate.startsAt) ||
     !Number.isFinite(candidate.endsAt)
