@@ -39,8 +39,8 @@ def require_session(request: Request, credentials: Annotated[HTTPAuthorizationCr
 
 
 @router.post('/register', response_model=UserRegistration, status_code=201, tags=[USER_AUTH],
-             summary='학번·이름·단과대학·학과 별도 등록',
-             description='로그인 세션을 만들지 않습니다. 기존 사용자 중 프로필이 없는 학번도 한 번 등록할 수 있습니다.')
+             summary='시연 사용자 프로필 등록',
+             description='숫자 10자리 `s_id`, `name`, `college`, `department`를 입력합니다. 이름·대학·학과는 공백을 정리한 1~100자 문자열입니다. 프로필을 별도로 저장하고 201을 반환하며 로그인 토큰은 만들지 않습니다. 기존 학번에 프로필이 없으면 등록할 수 있지만 이미 프로필이 있으면 409입니다. 실제 학생 신원 확인은 수행하지 않습니다.')
 def register(request: Request, response: Response, body: UserRegisterRequest):
     with connection(request.app.state.service.path, write=True) as db:
         if db.execute('SELECT 1 FROM user_profiles WHERE s_id=?', (body.s_id,)).fetchone():
@@ -54,8 +54,8 @@ def register(request: Request, response: Response, body: UserRegisterRequest):
             'department': body.department, 'created_at': created_at}
 
 
-@router.post('/login', response_model=LoginResponse, tags=[USER_AUTH], summary='학번형 ID만으로 시연용 로그인',
-             description='등록된 학번으로만 로그인합니다. 미등록 학번은 먼저 /auth/register로 등록하세요. 실제 학생 여부는 확인하지 않습니다.')
+@router.post('/login', response_model=LoginResponse, tags=[USER_AUTH], summary='등록된 학번형 ID로 시연 로그인',
+             description='`{"s_id":"학번 10자리"}`를 보냅니다. 등록된 사용자에게 1시간 유효한 access_token과 프로필을 반환합니다. 비밀번호 없는 시연용 식별이며 해당 ID를 아는 사람의 실제 신원은 검증하지 않습니다. 미등록 ID는 404입니다.\n\n같은 사용자의 여러 세션을 허용하며 로그인 시 만료된 사용자 세션을 정리합니다.')
 def login(request: Request, response: Response, body: LoginRequest):
     token = secrets.token_urlsafe(32)
     with connection(request.app.state.service.path, write=True) as db:
@@ -75,7 +75,7 @@ def login(request: Request, response: Response, body: LoginRequest):
             'user': {**dict(user), 'session_expires_at': expires_at}}
 
 
-@router.get('/me', response_model=UserIdentity, tags=[MY_DATA], summary='현재 로그인 사용자의 학번·이름·단과대학·학과 조회')
+@router.get('/me', response_model=UserIdentity, tags=[MY_DATA], summary='현재 로그인 사용자 프로필 확인', description='DemoSession 토큰의 사용자 학번·이름·단과대학·학과와 세션 만료 시각을 반환합니다. 프로필이 없는 기존 사용자는 해당 프로필 값이 null일 수 있습니다. 예약 목록이나 실제 착석 신원은 확인하지 않습니다.')
 def me(response: Response, session: Annotated[dict, Depends(require_session)]):
     response.headers['Cache-Control'] = 'no-store'
     return session['user']
@@ -86,8 +86,8 @@ async def no_logout_body(request: Request):
         raise APIError(422, 'VALIDATION_ERROR', '로그아웃 요청은 본문을 받지 않습니다.')
 
 
-@router.post('/logout', response_model=LogoutResponse, tags=[USER_AUTH], summary='현재 로그인 세션 종료',
-             dependencies=[Depends(no_logout_body)])
+@router.post('/logout', response_model=LogoutResponse, tags=[USER_AUTH], summary='현재 사용자 세션 로그아웃',
+             dependencies=[Depends(no_logout_body)], description='DemoSession이 필요하며 본문은 보내지 않습니다. 요청에 사용한 토큰의 세션 하나만 삭제합니다. 사용자 계정·프로필·예약과 같은 사용자의 다른 세션은 유지합니다.')
 def logout(request: Request, response: Response, session: Annotated[dict, Depends(require_session)]):
     with connection(request.app.state.service.path, write=True) as db:
         db.execute('DELETE FROM auth_sessions WHERE token_hash = ?', (session['token_hash'],))

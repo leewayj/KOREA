@@ -55,6 +55,7 @@ class AdminLoginResponse(BaseModel):
 class AdminReservationEdit(Input):
     starts_at: Annotated[int, Field(strict=True, ge=0, le=9223372036854775807)] | None = None
     ends_at: Annotated[int, Field(strict=True, ge=0, le=9223372036854775807)] | None = None
+    def_time: PositiveInteger | None = Field(default=None, description='시작 시각부터의 총 이용시간(초). ends_at과 동시 입력 불가.')
     status: Literal['CONFIRMED', 'ENDED', 'CANCELLED'] | None = None
 
 
@@ -63,6 +64,19 @@ class AdminReservationCreate(Input):
     s_id: Annotated[str, Field(strict=True, min_length=10, max_length=10, pattern=r'^[0-9]{10}$')]
     starts_at: Annotated[int, Field(strict=True, ge=0, le=9223372036854775807)]
     ends_at: Annotated[int, Field(strict=True, ge=0, le=9223372036854775807)]
+
+
+class ReservationSettingsEdit(Input):
+    default_duration_seconds: PositiveInteger | None = None
+    max_extensions: Annotated[int, Field(strict=True, ge=0, le=9223372036854775807)] | None = None
+
+
+class ReservationSettings(BaseModel):
+    id: Literal[1]
+    default_duration_seconds: int
+    max_extensions: int
+    updated_at: int
+    updated_by: str | None
 
 
 class ReservationDeleted(BaseModel):
@@ -117,15 +131,7 @@ class CleanupResult(BaseModel):
 
 class ReservationCreate(Input):
     seat_id: PositiveInteger = Field(description='전역 고유 좌석 ID. 방 안의 표시 번호와 다릅니다.')
-    def_time: PositiveInteger | None = Field(default=None, description='총 이용시간(초). 생략 또는 null이면 DB 기본 21600초.')
-
-
-class ReservationEdit(Input):
-    def_time: PositiveInteger = Field(description='예약 시작부터의 총 이용시간(초). 현재 시각부터의 시간이 아닙니다.')
-
-
-class ReservationExtend(Input):
-    additional_seconds: PositiveInteger = Field(description='기존 총 이용시간에 더할 양의 정수 초.')
+    def_time: PositiveInteger | None = Field(default=None, description='총 이용시간(초). 생략 또는 null이면 현재 관리자 설정 기본 시간.')
 
 
 class ReservationMove(Input):
@@ -160,6 +166,10 @@ class Reservation(BaseModel):
     remaining_seconds: int | None
     notice_code: NoticeCode | None
     notice_message: str | None
+    policy_default_duration_seconds: int
+    max_extensions: int | None
+    extension_count: int
+    legacy_extension_policy: bool
 
 
 class SeatHistory(BaseModel):

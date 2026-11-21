@@ -73,6 +73,16 @@ def validate(path: Path):
             raise RuntimeError('Incompatible reservation rules; use the current KOREA schema.')
         if db.execute('PRAGMA foreign_key_check').fetchone():
             raise RuntimeError('Database contains foreign key violations.')
+        for name in ('reservations_validate_update', 'reservations_record_move'):
+            if ' '.join(definitions[name].split()) != ' '.join(expected[name].sql.split()):
+                raise RuntimeError('Reservation state rules require migration: '+name)
+        if db.execute('SELECT COUNT(*) FROM reservation_settings WHERE id=1').fetchone()[0] != 1:
+            raise RuntimeError('Reservation settings are missing; inspect the database before startup.')
+        if db.execute('''SELECT 1 FROM reservations r LEFT JOIN reservation_policies p
+                         ON p.reservation_id=r.id WHERE p.reservation_id IS NULL LIMIT 1''').fetchone():
+            raise RuntimeError('Reservation policy snapshot is missing; back up and run migration.')
+        db.execute('''SELECT default_duration_seconds,max_extensions,extension_count,is_legacy
+                      FROM reservation_policies LIMIT 0''')
         if db.execute('SELECT 1 FROM reservation_admin_context LIMIT 1').fetchone():
             raise RuntimeError('Unexpected persisted administrator context.')
         if db.execute('SELECT 1 FROM reservation_admin_insert_context LIMIT 1').fetchone():

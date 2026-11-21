@@ -1,7 +1,7 @@
 import { Button } from './Button'
 import './reservation.css'
 
-import { dateFormat, timeFormat } from '../data/reservation'
+import { dateFormat, formatDuration, timeFormat } from '../data/reservation'
 import './reservation-flow.css'
 
 export default function ReservationPage({ reservation, room, onChange, onExtend, returnOpen, onRequestReturn, now, saving }) {
@@ -35,7 +35,7 @@ export default function ReservationPage({ reservation, room, onChange, onExtend,
             <dl>
               <div><dt>시작</dt><dd>{timeFormat.format(reservation.startsAt)}</dd></div>
               <div><dt>종료</dt><dd>{timeFormat.format(reservation.endsAt)}</dd></div>
-              <div><dt>총 이용 시간</dt><dd>{duration / 3600000}시간</dd></div>
+              <div><dt>총 이용 시간</dt><dd>{formatDuration(duration)}</dd></div>
             </dl>
           </div>
         </section>

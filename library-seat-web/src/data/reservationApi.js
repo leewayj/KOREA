@@ -21,7 +21,7 @@ export const reserveApiSeat = (seatId, durationSeconds) =>
 export const moveApiReservation = (id, seatId) =>
   post('/reservations/' + id + '/move', { target_seat_id: seatId })
 
-export const extendApiReservation = (id, seconds) =>
-  post('/reservations/' + id + '/extend', { additional_seconds: seconds })
+export const extendApiReservation = (id) =>
+  post('/reservations/' + id + '/extend')
 
 export const endApiReservation = (id) => post('/reservations/' + id + '/end')

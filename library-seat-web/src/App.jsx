@@ -281,7 +281,7 @@ function App() {
             if (!isReservationActive(reservation)) { navigate('expired'); return }
             if (apiMode) {
               return updateApiReservation(
-                () => extendApiReservation(reservation.id, reservationDuration / 1000),
+                () => extendApiReservation(reservation.id),
                 (saved) => {
                   setReservation({ ...reservation, endsAt: saved.ends_at * 1000, effectiveStatus: saved.effective_status })
                   showNotice('예약 시간이 2시간 연장되었습니다.')

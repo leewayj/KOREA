@@ -1,4 +1,4 @@
-"""Backed-up schema migration; create dependency tables before other objects."""
+"""Schema migration; create dependency tables before other objects."""
 import argparse
 import json
 import hashlib
@@ -19,6 +19,9 @@ PRE_MOVE_RULE_HASHES = {'reservations_validate_insert': 'c2181554b32ce61ee12b1fa
  'reservations_validate_update': '9c6d30d344e5542fccef1110d25246584c9d6a51123524837a632b674d1aed66'}
 
 
+# Exact preceding state-policy trigger definitions.
+PRE_STATE_POLICY_HASHES = {'reservations_validate_update': 'ff378f88c965a666278ec988c4de3a5d01c65efab8fa70083bc43f1919cdd700', 'reservations_record_move': '06a32c5bc979c0131347442aad775c3a210d31de3a892078d8601b91cc5109ff'}
+
 def definitions(db):
     return {name: obj.sql for name, obj in read_objects(db).items()}
 
@@ -27,8 +30,9 @@ def normalize(sql):
     return ' '.join(sql.split()) if sql is not None else None
 
 
-def upgrade(path: Path, backup: Path):
-    path, backup = path.resolve(), backup.resolve()
+def upgrade(path: Path, backup: Path | None):
+    path = path.resolve()
+    backup = backup.resolve() if backup is not None else None
     if not path.is_file():
         raise FileNotFoundError(path)
     if path == backup:
@@ -44,13 +48,21 @@ def upgrade(path: Path, backup: Path):
         if missing_core:
             raise RuntimeError('Compatible KOREA database is required; missing source tables: '
                                + ', '.join(missing_core))
+        if ('reservation_settings' in current and
+                db.execute('SELECT COUNT(*) FROM reservation_settings WHERE id=1').fetchone()[0] != 1):
+            raise RuntimeError('Existing reservation settings are missing; inspect before migration.')
+        if ('reservation_policies' in current and db.execute('''
+            SELECT 1 FROM reservations r LEFT JOIN reservation_policies p ON p.reservation_id=r.id
+            WHERE p.reservation_id IS NULL LIMIT 1
+        ''').fetchone()):
+            raise RuntimeError('Existing reservation policy snapshot is missing; inspect before migration.')
         for name, obj in latest.items():
             if name not in current or normalize(current[name]) == normalize(obj.sql):
                 continue
             known_old = (obj.kind in ('trigger', 'view') and (
                 (name in legacy and normalize(current[name]) == normalize(legacy[name]))
                 or hashlib.sha256(normalize(current[name]).encode()).hexdigest()
-                    == PRE_MOVE_RULE_HASHES.get(name)))
+                    in (PRE_MOVE_RULE_HASHES.get(name), PRE_STATE_POLICY_HASHES.get(name))))
             if not known_old:
                 raise RuntimeError('Partial or different schema found for object: '
                                    + name + '; inspect before migration.')
@@ -69,14 +81,15 @@ def upgrade(path: Path, backup: Path):
         if ('reservation_history_progress' not in current and 'user_seat_history' in current
                 and db.execute('SELECT 1 FROM user_seat_history LIMIT 1').fetchone()):
             raise RuntimeError('Cannot safely rebuild missing reservation_history_progress with existing independent history; inspect before migration.')
-        with backup.open('xb'):
-            pass
-        try:
-            with closing(sqlite3.connect(backup)) as copy:
-                db.backup(copy)
-        except Exception:
-            backup.unlink(missing_ok=True)
-            raise
+        if backup is not None:
+            with backup.open('xb'):
+                pass
+            try:
+                with closing(sqlite3.connect(backup)) as copy:
+                    db.backup(copy)
+            except Exception:
+                backup.unlink(missing_ok=True)
+                raise
         try:
             db.execute('BEGIN IMMEDIATE')
             # No hard-coded feature table lists: every current schema table is
@@ -92,6 +105,15 @@ def upgrade(path: Path, backup: Path):
                         quoted = '"'+name.replace('"', '""')+'"'
                         db.execute(f'DROP {kind.upper()} {quoted}')
                         db.execute(obj.sql)
+            if 'reservation_settings' not in current:
+                db.execute('''INSERT INTO reservation_settings(id,default_duration_seconds,max_extensions)
+                              VALUES(1,21600,2)''')
+            if 'reservation_policies' not in current:
+                # Legacy bookings had no extension cap. Preserve that policy;
+                # zero counts only extensions after this migration, not inferred history.
+                db.execute('''INSERT INTO reservation_policies(reservation_id,default_duration_seconds,
+                              max_extensions,extension_count,is_legacy)
+                              SELECT id,21600,NULL,0,1 FROM reservations''')
             if 'seat_occupancy' not in current:
                 db.execute('INSERT INTO seat_occupancy(seat_id) SELECT id FROM seats')
             if 'reservation_moves' not in current:
@@ -112,7 +134,7 @@ def upgrade(path: Path, backup: Path):
         except Exception:
             db.rollback()
             raise
-        return {'status': 'upgraded', 'backup': str(backup)}
+        return {'status': 'upgraded', 'backup': str(backup) if backup is not None else None}
     finally:
         db.close()
 
@@ -120,6 +142,8 @@ def upgrade(path: Path, backup: Path):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--database', type=Path, default=default_path())
-    parser.add_argument('--backup', type=Path, required=True)
+    backup_option = parser.add_mutually_exclusive_group(required=True)
+    backup_option.add_argument('--backup', type=Path)
+    backup_option.add_argument('--no-backup', action='store_true', help='Explicitly migrate without creating a backup.')
     args = parser.parse_args()
     print(json.dumps(upgrade(args.database, args.backup), ensure_ascii=False))
