@@ -9,7 +9,7 @@ const char* ssid = "GalaxyS26+5201";       // 와이파이 이름
 const char* password = "11111111";         // 와이파이 비밀번호
 
 // 백엔드 서버 주소 (1번 좌석 기준)
-const char* serverGetUrl = "http://10.44.160.72:8000/seats/1";
+const char* serverGetUrl = "http://10.44.160.72:8000/seats/1/reservation-info";
 const char* serverPostUrl = "http://10.44.160.72:8000/seats/1/occupancy";
 
 // 핀 설정
@@ -25,28 +25,28 @@ HX711 scale;
 const long OCCUPIED_THRESHOLD = 200000; // 2kg 이상 -> 착석 판정
 const long EMPTY_THRESHOLD = 150000;    // 이 값 이하 -> 비착석 판정
 
-// 종료 임박 기준 (실제 명세서 10분=600초, 시연용 30초)
+// 예비(Fallback) 종료 임박 기준 (서버가 target_led를 안 줄 때만 사용)
 const long WARNING_THRESHOLD_SEC = 30;
 
-// 통신/센서 오류 판단 기준 (명세서 기준 10초)
+// 통신/센서 오류 판단 기준 (seat_state.py의 TIMEOUT=10초와 동일)
 const unsigned long SERVER_TIMEOUT_MS = 10000;
 const unsigned long SENSOR_TIMEOUT_MS = 3000;
 
-// 최종 좌석 상태 정의 (만료·미예약 착석은 UNRESERVED_OCCUPIED로 통일)
-enum SeatStatus {
-    UNKNOWN,              // 1. 오류·수신 지연·초기화 중 (소등)
-    RESERVED_EMPTY,       // 2. 유효 예약 있음 + 비착석 (파란색 점등)
-    RESERVED_OCCUPIED,    // 3. 유효 예약 있음 + 착석 + 기준 초과 (소등)
-    EXPIRING_OCCUPIED,    // 3. 유효 예약 있음 + 착석 + 0 초과~기준 이하 (주황색 점등)
-    UNRESERVED_OCCUPIED,  // 4. 유효 예약 없음/만료 + 착석 (빨간색 점멸)
-    AVAILABLE             // 5. 유효 예약 없음 + 비착석 (소등)
+// LED 출력 모드 정의 (seat_state.py의 LEDS 규격과 1:1 일치)
+enum LedMode {
+    LED_OFF,
+    LED_BLUE_ON,
+    LED_ORANGE_ON,
+    LED_RED_BLINK
 };
 
-SeatStatus currentStatus = UNKNOWN;
+LedMode currentLedMode = LED_OFF;
 
-// 상태 추적 변수들
+// 서버 및 센서 상태 변수
 bool isReserved = false;
 long remainingTimeSec = 0;
+String serverSeatStatus = "";
+String serverTargetLed = "";
 bool isOccupied = false;
 
 // 오류 및 초기화 추적 변수
@@ -71,19 +71,17 @@ void setColor(int r, int g, int b) {
 }
 
 void updateLED() {
-    switch (currentStatus) {
-        case UNKNOWN:
-        case AVAILABLE:
-        case RESERVED_OCCUPIED:
+    switch (currentLedMode) {
+        case LED_OFF:
             setColor(0, 0, 0);       // 소등
             break;
-        case RESERVED_EMPTY:
+        case LED_BLUE_ON:
             setColor(0, 0, 255);     // 파란색 점등
             break;
-        case EXPIRING_OCCUPIED:
+        case LED_ORANGE_ON:
             setColor(255, 80, 0);    // 주황색 점등
             break;
-        case UNRESERVED_OCCUPIED:    // 빨간색 점멸 (0.5초 주기)
+        case LED_RED_BLINK:          // 빨간색 점멸 (0.5초 주기)
             if (millis() - previousBlinkMillis >= 500) {
                 previousBlinkMillis = millis();
                 blinkState = !blinkState;
@@ -94,14 +92,12 @@ void updateLED() {
     }
 }
 
-void printStatusName(SeatStatus status) {
-    switch (status) {
-        case UNKNOWN:             Serial.println("UNKNOWN [소등] - 초기화 중/통신·센서 오류"); break;
-        case RESERVED_EMPTY:      Serial.println("RESERVED_EMPTY [파랑 점등] - 예약 중·비어 있음"); break;
-        case RESERVED_OCCUPIED:   Serial.println("RESERVED_OCCUPIED [소등] - 예약 중·이용 중"); break;
-        case EXPIRING_OCCUPIED:   Serial.println("EXPIRING_OCCUPIED [주황 점등] - 예약 종료 임박"); break;
-        case UNRESERVED_OCCUPIED: Serial.println("UNRESERVED_OCCUPIED [빨강 점멸] - 예약 없음/만료·이용 중"); break;
-        case AVAILABLE:           Serial.println("AVAILABLE [소등] - 빈자리"); break;
+String ledModeToString(LedMode mode) {
+    switch (mode) {
+        case LED_BLUE_ON:   return "BLUE_ON";
+        case LED_ORANGE_ON: return "ORANGE_ON";
+        case LED_RED_BLINK: return "RED_BLINK";
+        default:            return "OFF";
     }
 }
 
@@ -146,7 +142,7 @@ void loop() {
         }
     }
 
-    // 2. [서버에서 상태 받아오기] 2초마다 실행 (GET)
+    // 2. [서버에서 상태 및 목표 LED 받아오기] 2초마다 실행 (GET)
     if (millis() - previousServerMillis >= 2000) {
         previousServerMillis = millis();
 
@@ -171,6 +167,10 @@ void loop() {
                         remainingTimeSec = 0;
                     }
 
+                    // 서버(seat_state.py)가 계산한 판정 및 목표 LED 수신
+                    serverSeatStatus = doc["seat_status"] | "";
+                    serverTargetLed = doc["target_led"] | "";
+
                     hasServerSynced = true;
                     isServerError = false;
                     lastServerOkMillis = millis();
@@ -190,7 +190,7 @@ void loop() {
         }
     }
 
-    // 3. [무게 측정 + 서버 전송 + 우선순위 판정] 1초마다 실행
+    // 3. [무게 측정 + LED 적용 + 서버로 결과 회신] 1초마다 실행 (POST)
     if (millis() - previousSensorMillis >= 1000) {
         previousSensorMillis = millis();
         long reading = 0;
@@ -201,67 +201,91 @@ void loop() {
             isSensorError = false;
             lastSensorOkMillis = millis();
 
-            // 경계값 반복 전환 방지
             if (reading >= OCCUPIED_THRESHOLD) {
                 isOccupied = true;
             } else if (reading <= EMPTY_THRESHOLD) {
                 isOccupied = false;
             }
         } else {
-            // 3초 이상 센서 응답이 없으면 SENSOR_ERROR 처리
             if (millis() - lastSensorOkMillis > SENSOR_TIMEOUT_MS) {
                 isSensorError = true;
             }
         }
 
-        // 서버로 센서 판정 결과 전송 (POST)
-        if (WiFi.status() == WL_CONNECTED) {
+        // ==================== [최종 LED 결정] ====================
+        String displayStatus = "UNKNOWN";
+
+        if (!hasServerSynced || isServerError || !hasValidSensor || isSensorError) {
+            // [1순위] 오류·통신 중단·초기화 중 -> 자체 소등
+            currentLedMode = LED_OFF;
+            displayStatus = "UNKNOWN";
+        }
+        else if (serverTargetLed == "BLUE_ON") {
+            currentLedMode = LED_BLUE_ON;
+            displayStatus = (serverSeatStatus != "") ? serverSeatStatus : "RESERVED_EMPTY";
+        }
+        else if (serverTargetLed == "ORANGE_ON") {
+            currentLedMode = LED_ORANGE_ON;
+            displayStatus = (serverSeatStatus != "") ? serverSeatStatus : "EXPIRING_OCCUPIED";
+        }
+        else if (serverTargetLed == "RED_BLINK") {
+            currentLedMode = LED_RED_BLINK;
+            displayStatus = (serverSeatStatus != "") ? serverSeatStatus : "EXPIRED_OCCUPIED";
+        }
+        else if (serverTargetLed == "OFF") {
+            currentLedMode = LED_OFF;
+            displayStatus = (serverSeatStatus != "") ? serverSeatStatus : (isOccupied ? "RESERVED_OCCUPIED" : "AVAILABLE");
+        }
+        else {
+            // 서버 응답에 target_led가 아직 없을 때를 대비한 예비 판정
+            if (isReserved && !isOccupied) {
+                currentLedMode = LED_BLUE_ON;
+                displayStatus = "RESERVED_EMPTY";
+            } else if (isReserved && isOccupied) {
+                if (remainingTimeSec > WARNING_THRESHOLD_SEC) {
+                    currentLedMode = LED_OFF;
+                    displayStatus = "RESERVED_OCCUPIED";
+                } else if (remainingTimeSec > 0) {
+                    currentLedMode = LED_ORANGE_ON;
+                    displayStatus = "EXPIRING_OCCUPIED";
+                } else {
+                    currentLedMode = LED_RED_BLINK;
+                    displayStatus = "EXPIRED_OCCUPIED";
+                }
+            } else if (!isReserved && isOccupied) {
+                currentLedMode = LED_OFF;
+                displayStatus = "UNRESERVED_OCCUPIED";
+            } else {
+                currentLedMode = LED_OFF;
+                displayStatus = "AVAILABLE";
+            }
+        }
+        // ==========================================================
+
+        updateLED();
+
+        // 서버로 센서 판정 + 적용된 LED 결과 회신 (POST)
+        if (WiFi.status() == WL_CONNECTED && (hasValidSensor || isSensorError)) {
             HTTPClient http;
             http.setTimeout(1500);
             http.begin(serverPostUrl);
             http.addHeader("Content-Type", "application/json");
 
-            String sensorStateStr = "UNKNOWN";
-            if (isSensorError) sensorStateStr = "SENSOR_ERROR";
-            else if (hasValidSensor) sensorStateStr = isOccupied ? "OCCUPIED" : "EMPTY";
+            String sensorStateStr = isSensorError ? "SENSOR_ERROR" : (isOccupied ? "OCCUPIED" : "EMPTY");
 
-            String httpRequestData = "{\"state\":\"" + sensorStateStr + "\"}";
+            JsonDocument postDoc;
+            postDoc["state"] = sensorStateStr;
+            postDoc["led_state"] = ledModeToString(currentLedMode);
+
+            String httpRequestData;
+            serializeJson(postDoc, httpRequestData);
+
             int postCode = http.POST(httpRequestData);
-            if (postCode <= 0 || postCode >= 400) {
-                Serial.printf(">>> 센서 POST 응답/에러: HTTP %d (전송값: %s)\n",
-                              postCode, sensorStateStr.c_str());
+            if (postCode != 200) {
+                Serial.printf(">>> 센서/LED 회신 POST 에러: HTTP %d\n", postCode);
             }
             http.end();
         }
-
-        // ==================== [판정 우선순위 1~5번] ====================
-        if (!hasServerSynced || isServerError || !hasValidSensor || isSensorError) {
-            // [우선순위 1] 오류·수신 지연·초기화 중 -> UNKNOWN
-            currentStatus = UNKNOWN;
-        } 
-        else if (isReserved && !isOccupied) {
-            // [우선순위 2] 유효 예약 있음 + 비착석 -> RESERVED_EMPTY
-            currentStatus = RESERVED_EMPTY;
-        } 
-        else if (isReserved && isOccupied) {
-            // [우선순위 3] 유효 예약 있음 + 착석
-            if (remainingTimeSec > WARNING_THRESHOLD_SEC) {
-                currentStatus = RESERVED_OCCUPIED;
-            } else if (remainingTimeSec > 0) {
-                currentStatus = EXPIRING_OCCUPIED;
-            } else {
-                currentStatus = UNRESERVED_OCCUPIED;
-            }
-        } 
-        else if (!isReserved && isOccupied) {
-            // [우선순위 4] 유효 예약 없음/만료 + 착석 중 -> UNRESERVED_OCCUPIED (빨강 점멸)
-            currentStatus = UNRESERVED_OCCUPIED;
-        } 
-        else {
-            // [우선순위 5] 유효 예약 없음 + 비착석 -> AVAILABLE
-            currentStatus = AVAILABLE;
-        }
-        // ===============================================================
 
         // 시리얼 모니터 출력
         Serial.print("예약: ");
@@ -271,7 +295,9 @@ void loop() {
         Serial.print("초 | 무게: ");
         Serial.print(reading);
         Serial.print(" | 판정: ");
-        printStatusName(currentStatus);
+        Serial.print(displayStatus);
+        Serial.print(" | 적용LED: ");
+        Serial.println(ledModeToString(currentLedMode));
     }
 
     updateLED();
