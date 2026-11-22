@@ -33,25 +33,6 @@ class UserRegistration(BaseModel):
     created_at: int
 
 
-class AdminLoginRequest(Input):
-    username: Annotated[str, Field(strict=True, min_length=3, max_length=32, pattern=r'^[A-Za-z0-9_-]+$')]
-    password: Annotated[str, Field(strict=True, min_length=1, max_length=128)]
-
-
-class AdminIdentity(BaseModel):
-    username: str
-    created_at: int
-    session_expires_at: int
-
-
-class AdminLoginResponse(BaseModel):
-    access_token: str
-    token_type: Literal['bearer'] = 'bearer'
-    expires_in: int
-    expires_at: int
-    admin: AdminIdentity
-
-
 class AdminReservationEdit(Input):
     starts_at: Annotated[int, Field(strict=True, ge=0, le=9223372036854775807)] | None = None
     ends_at: Annotated[int, Field(strict=True, ge=0, le=9223372036854775807)] | None = None

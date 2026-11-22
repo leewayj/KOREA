@@ -79,7 +79,7 @@ def seats(request: Request, response: Response, floor_id: FilterID = None, room_
     return service(request).seats(floor_id, room_id, limit, offset)
 
 
-@router.get('/seats/{seat_id}', response_model=Seat, tags=[LOCATION], description='전역 `seat_id`로 좌석을 조회합니다. 방 안의 표시 번호와 다릅니다. ESP32는 이 경로를 1~2초마다 요청해 `reservation_state`와 `remaining_seconds`를 읽을 수 있습니다.\n\n현재 유효 예약은 RESERVED, 없으면 AVAILABLE입니다. 예정 예약은 `next_reservation`으로 구분합니다. occupancy_state는 마지막 저장값을 유지하고 seat_status는 예약·착석·수신 유효성으로 계산합니다. 수신 단절은 UNKNOWN이며 LED·통신 상세는 /admin/seats/{seat_id}에서 관리자 인증으로 조회합니다. 없는 좌석은 404입니다.', summary='개별 좌석의 예약·착석 정보 조회')
+@router.get('/seats/{seat_id}', response_model=Seat, tags=[LOCATION], description='전역 `seat_id`로 좌석을 조회합니다. 방 안의 표시 번호와 다릅니다. ESP32는 이 경로를 1~2초마다 요청해 `reservation_state`와 `remaining_seconds`를 읽을 수 있습니다.\n\n현재 유효 예약은 RESERVED, 없으면 AVAILABLE입니다. 예정 예약은 `next_reservation`으로 구분합니다. occupancy_state는 마지막 저장값을 유지하고 seat_status는 예약·착석·수신 유효성으로 계산합니다. 수신 단절은 UNKNOWN이며 LED·통신 상세는 /admin/seats/{seat_id}에서 인증 없이 조회합니다. 없는 좌석은 404입니다.', summary='개별 좌석의 예약·착석 정보 조회')
 def seat(request: Request, response: Response, seat_id: ID):
     response.headers['Cache-Control']='no-store'
     return service(request).seat(seat_id)
