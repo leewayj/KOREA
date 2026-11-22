@@ -22,12 +22,18 @@ PRE_MOVE_RULE_HASHES = {'reservations_validate_insert': 'c2181554b32ce61ee12b1fa
 # Exact preceding state-policy trigger definitions.
 PRE_STATE_POLICY_HASHES = {'reservations_validate_update': 'ff378f88c965a666278ec988c4de3a5d01c65efab8fa70083bc43f1919cdd700', 'reservations_record_move': '06a32c5bc979c0131347442aad775c3a210d31de3a892078d8601b91cc5109ff'}
 
+# Exact preceding telemetry table; rename columns without rebuilding data.
+PRE_LED_TABLE_HASH = 'e61cefc1481e6326ae4dae8b32b8ffcb90ecaf6d408093f09a3ad077d2026d0e'
+
 def definitions(db):
     return {name: obj.sql for name, obj in read_objects(db).items()}
 
 
 def normalize(sql):
-    return ' '.join(sql.split()) if sql is not None else None
+    if sql is None:
+        return None
+    # SQLite versions differ in quoting identifiers after RENAME COLUMN.
+    return ' '.join(sql.split()).replace('"led_state"', 'led_state').replace('"led_state_updated_at"', 'led_state_updated_at')
 
 
 def upgrade(path: Path, backup: Path | None):
@@ -44,6 +50,8 @@ def upgrade(path: Path, backup: Path | None):
     try:
         db.execute('PRAGMA foreign_keys=ON')
         current = definitions(db)
+        rename_led = ('seat_device_reports' in current and
+            hashlib.sha256(normalize(current['seat_device_reports']).encode()).hexdigest() == PRE_LED_TABLE_HASH)
         missing_core = [name for name in CORE_TABLES if name not in current]
         if missing_core:
             raise RuntimeError('Compatible KOREA database is required; missing source tables: '
@@ -63,6 +71,7 @@ def upgrade(path: Path, backup: Path | None):
                 (name in legacy and normalize(current[name]) == normalize(legacy[name]))
                 or hashlib.sha256(normalize(current[name]).encode()).hexdigest()
                     in (PRE_MOVE_RULE_HASHES.get(name), PRE_STATE_POLICY_HASHES.get(name))))
+            known_old = known_old or (name == 'seat_device_reports' and rename_led)
             if not known_old:
                 raise RuntimeError('Partial or different schema found for object: '
                                    + name + '; inspect before migration.')
@@ -92,6 +101,12 @@ def upgrade(path: Path, backup: Path | None):
                 raise
         try:
             db.execute('BEGIN IMMEDIATE')
+            if rename_led:
+                db.execute('ALTER TABLE seat_device_reports RENAME COLUMN applied_led TO led_state')
+                db.execute('ALTER TABLE seat_device_reports RENAME COLUMN applied_led_updated_at TO led_state_updated_at')
+                current = definitions(db)
+                if normalize(current['seat_device_reports']) != normalize(expected['seat_device_reports']):
+                    raise RuntimeError('LED column rename schema verification failed; no data was changed.')
             # No hard-coded feature table lists: every current schema table is
             # available before indexes, views, or triggers are installed.
             for kind in ('table', 'index', 'view', 'trigger'):
@@ -101,6 +116,8 @@ def upgrade(path: Path, backup: Path | None):
                     if name not in current:
                         db.execute(obj.sql)
                     elif normalize(current[name]) != normalize(obj.sql):
+                        if kind == 'table':
+                            raise RuntimeError('Refusing to rebuild an existing source table: '+name)
                         # The preflight permits only recognized older triggers/views.
                         quoted = '"'+name.replace('"', '""')+'"'
                         db.execute(f'DROP {kind.upper()} {quoted}')

@@ -8,7 +8,7 @@ import secrets
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .auth import token_hash, no_logout_body
@@ -17,7 +17,7 @@ from .errors import APIError
 from .tags import ADMIN_AUTH, ADMIN_RESERVATION
 from .models import (AdminIdentity, AdminLoginRequest, AdminLoginResponse,
                      AdminReservationEdit, AdminReservationCreate, ReservationDeleted,
-                     ErrorResponse, LogoutResponse, Reservation, Identifier)
+                     ErrorResponse, LogoutResponse, Reservation, Identifier, AdminSeat)
 from .service import reservation, require
 
 ITERATIONS = 600_000
@@ -178,6 +178,23 @@ def delete_reservation(request: Request, reservation_id: Identifier, session: Ad
         reservation(db,reservation_id)
         db.execute('DELETE FROM reservations WHERE id=?',(reservation_id,))
     return {'deleted_reservation_id':reservation_id}
+
+
+@router.get('/seats', response_model=list[AdminSeat], tags=[ADMIN_RESERVATION],
+            summary='관리자 좌석·LED·통신 상태 목록',
+            description='AdminSession이 필요합니다. 공개 좌석 필드에 target_led·led_state·led_state_updated_at·device_connected를 추가합니다. 수신 이력이 있고 마지막 수신 후 10초 이하는 연결, 초과는 단절입니다. 센서 오류도 정상 수신이면 연결은 true입니다. 미회신 LED는 null이며 회신 생략은 이전 값을 유지합니다. floor_id·room_id·limit·offset으로 조회하며 배열 형식을 유지합니다. 가상 좌석은 통신 단절 판정을 적용하지 않고 device_connected=false로 반환합니다.')
+def admin_seats(request: Request, session: AdminSession,
+                floor_id: Identifier | None = None, room_id: Identifier | None = None,
+                limit: Annotated[int, Query(ge=1, le=500)] = 100,
+                offset: Annotated[int, Query(ge=0)] = 0):
+    return request.app.state.service.seats(floor_id, room_id, limit, offset)
+
+
+@router.get('/seats/{seat_id}', response_model=AdminSeat, tags=[ADMIN_RESERVATION],
+            summary='관리자 개별 좌석·LED·통신 상태',
+            description='AdminSession이 필요합니다. 목표 LED와 마지막 실제 적용 회신을 구분합니다. 기존 occupancy_updated_at은 마지막 센서 저장시각입니다. 연결 여부는 실제 수신 기록으로 판정하며 초기 DB 생성시각을 수신으로 간주하지 않습니다. 재시작 후 실제 좌석은 새 보고 전 UNKNOWN입니다.')
+def admin_seat(request: Request, seat_id: Identifier, session: AdminSession):
+    return request.app.state.service.seat(seat_id)
 
 
 if __name__ == '__main__':

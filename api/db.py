@@ -87,6 +87,9 @@ def validate(path: Path):
             raise RuntimeError('Unexpected persisted administrator context.')
         if db.execute('SELECT 1 FROM reservation_admin_insert_context LIMIT 1').fetchone():
             raise RuntimeError('Unexpected persisted administrator insert context.')
+        if 'led_state' not in {r[1] for r in db.execute('PRAGMA table_info(seat_device_reports)')}:
+            raise RuntimeError('LED field rename requires database migration.')
+        db.execute('SELECT seat_id,device_kind,received_at,led_state,led_state_updated_at,tracked_reservation_id,tracked_starts_at,tracked_ends_at FROM seat_device_reports LIMIT 0')
         db.execute('SELECT * FROM seat_status LIMIT 0')
         db.execute('SELECT * FROM reservation_status LIMIT 0')
 
