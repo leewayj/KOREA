@@ -4,7 +4,7 @@ import SeatPage from './components/SeatPage'
 import ReservationPage from './components/ReservationPage'
 import ReturnSeatDialog from './components/ReturnSeatDialog'
 import ExpiredReservationPage from './components/ExpiredReservationPage'
-import { createPreviewReservation, readPreviewReservation, savePreviewReservation, isReservationActive, canChangeSeat, changeReservationSeat, extendReservation, createReservationFixture, reservationDuration } from './data/reservation'
+import { createPreviewReservation, readPreviewReservation, savePreviewReservation, isReservationActive, canChangeSeat, changeReservationSeat, extendReservation, createReservationFixture, reservationDuration, timeFormat, expirationWarningMs, isReservationEndingSoon } from './data/reservation'
 import { rooms as previewRooms } from './data/rooms'
 import { reservationApiEnabled, fetchSeats, fetchSeat, fetchMyReservation, reserveApiSeat, moveApiReservation, extendApiReservation, endApiReservation } from './data/reservationApi'
 import { session } from './api'
@@ -24,6 +24,7 @@ function toWebReservation(reservation, seat) {
     startsAt: reservation.starts_at * 1000,
     endsAt: reservation.ends_at * 1000,
     effectiveStatus: reservation.effective_status,
+    studentId: session()?.user?.s_id,
   }
 }
 
@@ -54,7 +55,7 @@ function RoomStatusCard({ room, onSelect, changeMode }) {
   )
 }
 
-function App() {
+function App({ accountControl }) {
   const [route, setRoute] = useState(getRoute)
   const { page, roomId } = route
   const [apiSeats, setApiSeats] = useState([])
@@ -81,6 +82,7 @@ function App() {
   const appShell = useRef(null)
   const reservationRoom = rooms.find((item) => item.id === reservation?.roomId)
   const changeMode = ['seats', 'selected'].includes(page) && Boolean(activeReservation)
+  const endingSoon = page === 'reservation' && isReservationEndingSoon(reservation, now)
   const pageTitle = { home: 'HOME', rooms: '열람실 좌석 현황', seats: '좌석 선택', selected: '좌석 선택', reservation: '예약 정보 조회', expired: '예약 종료' }[page]
 
   function navigate(nextPage) {
@@ -172,12 +174,19 @@ function App() {
   }
 
   useEffect(() => {
-    if (!reservation) return
     const updateClock = () => setNow(Date.now())
     updateClock()
     const timer = window.setInterval(updateClock, 1000)
+    const untilWarning = reservation ? reservation.endsAt - expirationWarningMs - Date.now() : 0
+    const warningTimer = untilWarning > 0 && untilWarning <= 2_147_483_647
+      ? window.setTimeout(updateClock, untilWarning)
+      : null
     window.addEventListener('focus', updateClock)
-    return () => { window.clearInterval(timer); window.removeEventListener('focus', updateClock) }
+    return () => {
+      window.clearInterval(timer)
+      if (warningTimer !== null) window.clearTimeout(warningTimer)
+      window.removeEventListener('focus', updateClock)
+    }
   }, [reservation])
 
   useEffect(() => {
@@ -230,17 +239,26 @@ function App() {
   return (
     <div ref={appShell} className={`app-shell${['seats', 'selected'].includes(page) ? ' seat-shell' : ['reservation', 'expired'].includes(page) ? ' reservation-shell' : ''}`}>
       <header className="app-header" inert={selectedSeat !== null || showReturnDialog}>
+        <div className="system-status" aria-hidden="true">
+          <span>{timeFormat.format(now)}</span><Icon name="v02-battery" />
+        </div>
         <div className="navigation">
-          {page === 'home' ? <span className="navigation-spacer" aria-hidden="true" /> : (
-            <button className="icon-button" aria-label={['seats', 'selected'].includes(page) ? '열람실 목록으로 돌아가기' : 'HOME'} onClick={() => {
+          {page === 'home' ? (accountControl ?? <span className="navigation-spacer" aria-hidden="true" />) : (
+            <button className="icon-button" aria-label={['seats', 'selected'].includes(page) ? '열람실 목록으로 돌아가기' : endingSoon ? '홈으로 돌아가기' : 'HOME'} onClick={() => {
               if (['seats', 'selected'].includes(page)) navigate('rooms')
               else { if (page === 'expired') clearReservation(); navigate('home') }
             }}>
-              <Icon name={['reservation', 'expired'].includes(page) ? 'nav-home-v2' : 'seat-back-v2'} />
+              <Icon name={['reservation', 'expired'].includes(page) && !endingSoon ? 'v02-home' : 'v02-back'} />
             </button>
           )}
           <h1>{pageTitle}</h1>
-          <span className="navigation-spacer" aria-hidden="true" />
+          {endingSoon ? (
+            <details className="reservation-navigation-menu">
+              <summary aria-label="예약 메뉴"><Icon name="v02-menu" /></summary>
+              <button type="button" onClick={() => navigate('home')}>홈으로</button>
+              <button type="button" onClick={() => navigate('rooms')}>열람실 좌석 현황</button>
+            </details>
+          ) : <span className="navigation-spacer" aria-hidden="true" />}
         </div>
       </header>
 
@@ -274,7 +292,7 @@ function App() {
           onReserve={() => { clearReservation(); navigate('rooms') }}
           onConfirm={() => { clearReservation(); navigate('home') }} />
       ) : page === 'reservation' ? (
-        activeReservation ? <ReservationPage saving={saving} now={now} reservation={reservation} room={reservationRoom}
+        activeReservation ? <ReservationPage saving={saving} now={now} endingSoon={endingSoon} reservation={reservation} room={reservationRoom}
           returnOpen={showReturnDialog} onRequestReturn={requestReturn}
           onChange={() => navigate(`selected/${reservation.roomId}`)}
           onExtend={() => {

@@ -99,7 +99,7 @@ def get_reservation(request: Request, reservation_id: ID):
 
 @router.post('/reservations/{reservation_id}/extend', response_model=Reservation, tags=[RESERVATION_WRITE], responses=OWNER_RESPONSES,
              summary='생성 당시 기본 시간만큼 예약 연장',
-             description='**본문을 보내지 않습니다.** `{}`, `null`, `additional_seconds` JSON도 422입니다.\n\n예약에 저장된 `policy_default_duration_seconds`를 기존 종료 시각에 더하고 연장 횟수 1회를 소비합니다. 이후 관리자 설정이 변경되어도 기존 예약의 연장량·한도는 유지합니다. 횟수 초과는 409 EXTENSION_LIMIT_REACHED, 시간 충돌은 409 RESERVATION_CONFLICT이며 실패 시 시간·횟수를 모두 유지합니다. 현재 IN_USE 예약만 연장할 수 있습니다. 예정·종료·취소·만료 예약은 거부합니다.\n\nDemoSession 로그인이 필요합니다. 로그인 학번과 예약 소유자를 비교해 본인 예약만 처리합니다. 타인·소유자 없는 예약은 403이며 반복 요청도 소유자를 먼저 확인합니다.',
+             description='**본문을 보내지 않습니다.** `{}`, `null`, `additional_seconds` JSON도 422입니다.\n\n기존 종료 시각에 7200초(2시간)를 더하고 연장 횟수 1회를 소비합니다. 예약에 저장된 연장 한도는 유지합니다. 횟수 초과는 409 EXTENSION_LIMIT_REACHED, 시간 충돌은 409 RESERVATION_CONFLICT이며 실패 시 시간·횟수를 모두 유지합니다. 현재 IN_USE 예약만 연장할 수 있습니다. 예정·종료·취소·만료 예약은 거부합니다.\n\nDemoSession 로그인이 필요합니다. 로그인 학번과 예약 소유자를 비교해 본인 예약만 처리합니다. 타인·소유자 없는 예약은 403이며 반복 요청도 소유자를 먼저 확인합니다.',
              dependencies=[Depends(no_body)])
 def extend_reservation(request: Request, reservation_id: ID, session: StudentSession):
     return service(request).extend(reservation_id, owner_s_id=session['user']['s_id'])

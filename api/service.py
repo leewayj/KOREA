@@ -157,7 +157,7 @@ class Service:
             now = db.execute('SELECT unixepoch()').fetchone()[0]
             if row['status'] != 'CONFIRMED' or row['effective_status'] != 'IN_USE':
                 raise APIError(409, 'RESERVATION_CLOSED', '종료·취소·만료된 예약은 수정할 수 없습니다.')
-            duration = row['def_time'] + row['policy_default_duration_seconds']
+            duration = row['def_time'] + 2 * 60 * 60
             if duration > 9223372036854775807 - row['starts_at']:
                 raise APIError(422, 'INVALID_DURATION', '이용시간이 저장 가능한 범위를 초과합니다.')
             if row['starts_at'] + duration <= now:

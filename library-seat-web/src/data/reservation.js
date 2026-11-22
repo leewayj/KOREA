@@ -3,6 +3,7 @@ import { reservedSeats } from './seats.js'
 
 const storageKey = 'library-seat-preview-reservation'
 export const reservationDuration = 2 * 60 * 60 * 1000
+export const expirationWarningMs = 10 * 60 * 1000
 
 export function createPreviewReservation(roomId, seat) {
   const startsAt = Date.now()
@@ -49,6 +50,10 @@ export function formatDuration(durationMs) {
 
 export function isReservationActive(reservation, now = Date.now()) {
   return Boolean(reservation && reservation.endsAt > now)
+}
+
+export function isReservationEndingSoon(reservation, now) {
+  return isReservationActive(reservation, now) && reservation.endsAt - now <= expirationWarningMs
 }
 
 export function canChangeSeat(reservation, roomId, seat, now = Date.now()) {

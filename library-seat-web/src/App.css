@@ -2,14 +2,14 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  width: 375px;
+  width: 390px;
   max-width: 100%;
   height: 100%;
-  max-height: 812px;
+  max-height: 844px;
   min-height: 0;
   margin: 0 auto;
   overflow: hidden;
-  border-radius: 0;
+  border-radius: 24px;
   background: var(--surface);
   box-shadow: 0 4px 16px rgb(0 46 89 / 10%), 0 0 0 1px var(--divider);
 }
@@ -19,6 +19,12 @@
 .app-shell > main > *, .app-shell > footer { flex-shrink: 0; }
 
 .app-header { flex-shrink: 0; color: var(--blue-deep); background: white; }
+.system-status { height: 32px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; font-size: 12px; line-height: 18px; }
+.system-status img { display: block; }
+.reservation-navigation-menu { position: relative; z-index: 2; width: 24px; height: 24px; }
+.reservation-navigation-menu summary { cursor: pointer; display: block; list-style: none; }
+.reservation-navigation-menu summary::-webkit-details-marker { display: none; }
+.reservation-navigation-menu button { display: block; width: max-content; min-width: 120px; margin-left: auto; transform: translateX(calc(-100% + 24px)); border: 1px solid var(--divider); background: white; color: var(--blue-deep); padding: 8px 12px; }
 .navigation { height: 64px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .navigation-spacer { flex-shrink: 0; width: 24px; height: 24px; }
 .navigation h1 { flex: 1; font-size: 18px; font-weight: 700; line-height: 27px; text-align: center; white-space: nowrap; }
@@ -27,8 +33,8 @@
 .icon-button:focus-visible { outline-color: var(--blue-main); border-radius: 2px; }
 .icon-button img { display: block; }
 
-.room-list { display: flex; flex-direction: column; gap: 10px; padding: 16px 24px; }
-.room-card { display: flex; flex-direction: column; gap: 8px; width: 100%; min-height: 110px; padding: 12px 16px; border: 0; border-radius: 16px; background: white; color: var(--blue-deep); text-align: left; box-shadow: inset 0 0 0 1px var(--divider), 0 4px 16px rgb(0 46 89 / 4%); }
+.room-list { display: flex; flex-direction: column; gap: 12px; padding: 24px; }
+.room-card { display: flex; flex-direction: column; gap: 8px; width: 100%; min-height: 118px; padding: 16px; border: 0; border-radius: 16px; background: white; color: var(--blue-deep); text-align: left; box-shadow: 0 4px 16px rgb(0 46 89 / 4%); }
 .room-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; min-height: 28px; }
 .room-name { font-size: 18px; font-weight: 700; line-height: 28px; }
 .room-action { flex-shrink: 0; font-size: 12px; font-weight: 500; line-height: 18px; color: var(--blue-main); white-space: nowrap; }
