@@ -67,6 +67,8 @@ def seat_rows(db, now, floor_id=None, room_id=None, seat_id=None, limit=100, off
         else:
             item.update(remaining_seconds=None,notice_code=None,notice_message=None)
         item['server_now']=now
+        from .seat_state import projection
+        item.update(projection(db, item, now))
         result.append(item)
     return result
 
@@ -189,24 +191,25 @@ class Service:
             return reservation(db, reservation_id)
 
 
-    def update_occupancy(self, seat_id, state):
-        if state not in ('OCCUPIED', 'EMPTY'):
-            raise APIError(422, 'VALIDATION_ERROR', 'OCCUPIED 또는 EMPTY를 입력하세요.')
+    def update_occupancy(self, seat_id, state, led_state=None):
+        if state not in ('OCCUPIED', 'EMPTY', 'SENSOR_ERROR'):
+            raise APIError(422, 'VALIDATION_ERROR', '착석 상태 값이 올바르지 않습니다.')
+        if led_state not in (None, 'OFF', 'BLUE_ON', 'ORANGE_ON', 'RED_BLINK'):
+            raise APIError(422, 'VALIDATION_ERROR', 'LED 적용 상태 값이 올바르지 않습니다.')
+        from .seat_state import record_report
         with connection(self.path, write=True) as db:
             require(db, 'seats', seat_id)
             now = db.execute('SELECT unixepoch()').fetchone()[0]
-            db.execute("""INSERT INTO seat_occupancy(seat_id,state,occupied_since,updated_at)
-                VALUES(?,?,?,?) ON CONFLICT(seat_id) DO UPDATE SET
-                state=excluded.state,
-                occupied_since=CASE WHEN excluded.state='OCCUPIED' THEN
-                    CASE WHEN seat_occupancy.state='OCCUPIED' THEN seat_occupancy.occupied_since
-                         ELSE excluded.occupied_since END ELSE NULL END,
-                updated_at=excluded.updated_at""",
-                (seat_id, state, now if state == 'OCCUPIED' else None, now))
+            record_report(db, seat_id, state, led_state, now)
             return seat_rows(db, now, seat_id=seat_id)[0]
+
+    def reset_device_continuity(self):
+        from .seat_state import reset_after_restart
+        with connection(self.path, write=True) as db:
+            reset_after_restart(db)
 
     def device_reservation_info(self, seat_id):
         row = self.seat(seat_id)
         return {key: row[key] for key in (
-            'seat_id', 'reservation_state', 'active_reservation_id',
+            'seat_status', 'target_led', 'seat_id', 'reservation_state', 'active_reservation_id',
             'starts_at', 'ends_at', 'remaining_seconds', 'next_reservation', 'server_now')}

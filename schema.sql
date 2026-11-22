@@ -355,3 +355,16 @@ JOIN floors f ON f.id = rm.floor_id
 LEFT JOIN reservations r ON r.seat_id = s.id AND r.status = 'CONFIRMED'
     AND r.starts_at <= unixepoch() AND unixepoch() < r.ends_at
 LEFT JOIN seat_occupancy o ON o.seat_id = s.id;
+
+
+-- Last hardware ACK and evidence of occupied continuity; no student identity.
+CREATE TABLE seat_device_reports (
+    seat_id INTEGER PRIMARY KEY REFERENCES seats(id) ON DELETE CASCADE,
+    device_kind TEXT NOT NULL DEFAULT 'REAL' CHECK(device_kind IN ('REAL','VIRTUAL')),
+    received_at INTEGER CHECK(received_at IS NULL OR typeof(received_at)='integer'),
+    "led_state" TEXT CHECK("led_state" IN ('OFF','BLUE_ON','ORANGE_ON','RED_BLINK')),
+    "led_state_updated_at" INTEGER,
+    tracked_reservation_id INTEGER REFERENCES reservations(id) ON DELETE SET NULL,
+    tracked_starts_at INTEGER,
+    tracked_ends_at INTEGER
+);

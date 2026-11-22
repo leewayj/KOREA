@@ -59,14 +59,14 @@ def rooms(request: Request, floor_id: FilterID = None):
     return service(request).rooms(floor_id)
 
 
-@router.get('/seats', response_model=list[Seat], tags=[LOCATION], description='`floor_id`, `room_id`로 범위를 좁히고 `limit`·`offset`으로 나누어 조회합니다.\n\n좌석별 위치, 현재 예약, 다음 예정 예약, 남은 초, 마지막 저장 착석 상태를 반환합니다. `reservation_state=AVAILABLE`은 현재 예약이 없다는 뜻이며 비착석을 보장하지 않습니다. 현재 예약이 없으면 `remaining_seconds=null`입니다. 로그인 없이 조회합니다.', summary='좌석 목록·현재 및 다음 예약 조회')
+@router.get('/seats', response_model=list[Seat], tags=[LOCATION], description='`floor_id`, `room_id`로 범위를 좁히고 `limit`·`offset`으로 나누어 조회합니다.\n\n기존 좌석별 위치·현재/다음 예약·남은 초·마지막 착석 상태를 유지하고 최종 seat_status를 추가합니다. 센서 오류·초기화·실제 장치 수신 10초 초과는 UNKNOWN입니다. LED·통신 상세는 관리자 전용 API에서 제공합니다. `reservation_state=AVAILABLE`은 현재 예약이 없다는 뜻이며 비착석을 보장하지 않습니다. 현재 예약이 없으면 `remaining_seconds=null`입니다. 로그인 없이 조회합니다.', summary='좌석 목록·현재 및 다음 예약 조회')
 def seats(request: Request, response: Response, floor_id: FilterID = None, room_id: FilterID = None,
           limit: Limit = 100, offset: Offset = 0):
     response.headers['Cache-Control']='no-store'
     return service(request).seats(floor_id, room_id, limit, offset)
 
 
-@router.get('/seats/{seat_id}', response_model=Seat, tags=[LOCATION], description='전역 `seat_id`로 좌석을 조회합니다. 방 안의 표시 번호와 다릅니다. ESP32는 이 경로를 1~2초마다 요청해 `reservation_state`와 `remaining_seconds`를 읽을 수 있습니다.\n\n현재 유효 예약은 RESERVED, 없으면 AVAILABLE입니다. 예정 예약은 `next_reservation`으로 구분합니다. 착석 상태는 DB의 마지막 저장값이며 수신 중단 자동 판정이나 LED 명령을 포함하지 않습니다. 없는 좌석은 404입니다.', summary='개별 좌석의 예약·착석 정보 조회')
+@router.get('/seats/{seat_id}', response_model=Seat, tags=[LOCATION], description='전역 `seat_id`로 좌석을 조회합니다. 방 안의 표시 번호와 다릅니다. ESP32는 이 경로를 1~2초마다 요청해 `reservation_state`와 `remaining_seconds`를 읽을 수 있습니다.\n\n현재 유효 예약은 RESERVED, 없으면 AVAILABLE입니다. 예정 예약은 `next_reservation`으로 구분합니다. occupancy_state는 마지막 저장값을 유지하고 seat_status는 예약·착석·수신 유효성으로 계산합니다. 수신 단절은 UNKNOWN이며 LED·통신 상세는 /admin/seats/{seat_id}에서 관리자 인증으로 조회합니다. 없는 좌석은 404입니다.', summary='개별 좌석의 예약·착석 정보 조회')
 def seat(request: Request, response: Response, seat_id: ID):
     response.headers['Cache-Control']='no-store'
     return service(request).seat(seat_id)
@@ -132,6 +132,7 @@ def create_app(database_path: Path | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         validate(path)
+        app.state.service.reset_device_continuity()
         worker=ReservationClock(path)
         app.state.reservation_clock=worker
         if os.getenv('KOREA_CLOCK_ENABLED','1') != '0':
@@ -142,7 +143,7 @@ def create_app(database_path: Path | None = None) -> FastAPI:
             if worker.thread is not None:
                 worker.stop()
 
-    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.13.0', lifespan=lifespan, openapi_tags=OPENAPI_TAGS,
+    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.14.0', lifespan=lifespan, openapi_tags=OPENAPI_TAGS,
                   description='여기자리 서비스 위한 API.')
     app.state.service = Service(path)
 

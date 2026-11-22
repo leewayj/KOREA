@@ -185,6 +185,10 @@ class NextReservation(BaseModel):
     ends_at: int
 
 
+FinalSeatStatus = Literal['AVAILABLE', 'RESERVED_EMPTY', 'RESERVED_OCCUPIED', 'EXPIRING_OCCUPIED', 'EXPIRED_OCCUPIED', 'UNRESERVED_OCCUPIED', 'UNKNOWN']
+LedState = Literal['OFF', 'BLUE_ON', 'ORANGE_ON', 'RED_BLINK']
+
+
 class Seat(BaseModel):
     seat_id: int
     floor_code: str
@@ -196,6 +200,7 @@ class Seat(BaseModel):
     starts_at: int | None
     ends_at: int | None
     reservation_state: Literal['AVAILABLE', 'RESERVED']
+    seat_status: FinalSeatStatus
     occupancy_state: OccupancyState | None
     occupied_since: int | None
     occupancy_updated_at: int | None
@@ -204,6 +209,13 @@ class Seat(BaseModel):
     next_reservation: NextReservation | None
     notice_code: NoticeCode | None
     notice_message: str | None
+
+
+class AdminSeat(Seat):
+    target_led: LedState
+    led_state: LedState | None
+    led_state_updated_at: int | None
+    device_connected: bool
 
 
 class ErrorDetail(BaseModel):
@@ -216,10 +228,13 @@ class ErrorResponse(BaseModel):
 
 
 class OccupancyUpdate(Input):
-    state: Literal['OCCUPIED', 'EMPTY']
+    state: Literal['OCCUPIED', 'EMPTY', 'SENSOR_ERROR']
+    led_state: LedState | None = None
 
 
 class DeviceReservationInfo(BaseModel):
+    seat_status: FinalSeatStatus
+    target_led: LedState
     seat_id: int
     reservation_state: Literal['AVAILABLE', 'RESERVED']
     active_reservation_id: int | None

@@ -18,7 +18,7 @@ OPENAPI_TAGS = [
     {'name': USER_AUTH, 'description': '프로필 등록, 시연용 학번 로그인과 로그아웃. 실제 학생 신원 인증은 아닙니다.'},
     {'name': MY_DATA, 'description': 'DemoSession으로 내 프로필·IN_USE 예약·독립 이용 좌석 이력을 조회합니다.'},
     {'name': RESERVATION_WRITE, 'description': '예정 예약은 이동·취소, 사용 중 예약은 연장·이동·종료를 허용합니다. 만료·취소·종료 예약은 변경할 수 없고 같은 취소·종료의 반복은 기존 결과를 반환합니다. 임의 시간 수정은 관리자 API에서 처리합니다. DemoSession이 필요하며 변경은 본인 예약만 허용합니다.'},
-    {'name': SENSOR, 'description': '인증 없는 ESP32 착석 수신과 예약정보 응답. 장치 키·혼잡도·LED 목표 상태는 제공하지 않습니다.'},
+    {'name': SENSOR, 'description': '인증 없는 ESP32 착석 수신과 예약정보 응답. 최종 좌석 상태와 목표 LED를 전달하고 적용 LED 회신을 저장합니다. 장치 키·혼잡도는 제공하지 않습니다.'},
     {'name': ADMIN_AUTH, 'description': '관리자 ID·비밀번호 로그인과 AdminSession 조회·로그아웃. 일반 사용자 세션과 분리됩니다.'},
     {'name': ADMIN_SETTINGS, 'description': '관리자 기본 예약 시간·연장 횟수 조회/수정. 변경은 새 예약부터 적용하고 기존 예약은 생성 당시 정책을 보존합니다.'},
     {'name': ADMIN_RESERVATION, 'description': 'AdminSession으로 가상 예약 등록·시간/상태 수정·영구 삭제. 조회는 공통 예약 조회 경로를 사용합니다.'},
