@@ -16,6 +16,11 @@ import {
 
 import { adminRequest, loadAdminData } from "./data/adminApi.js";
 
+const unavailable = "확인할 수 없음";
+const loadingData = {
+  loading: true, rooms: [], roomsKnown: false, currentKnown: false,
+  scheduledKnown: false, reservations: [], settings: null,
+};
 const titles = {
   home: "도서관 좌석 관리",
   rooms: "예약 데이터 관리",
@@ -52,14 +57,14 @@ function Bar({ value, round = false }) {
     </div>
   );
 }
-function Congestion({ seats }) {
+function Congestion({ seats, known = true, missing = unavailable }) {
   const s = summary(seats);
   return (
     <div className="congestion">
       <div className="row">
         <strong>현재 혼잡도</strong>
         <span className="badge">
-          {s.rate === null
+          {!known ? missing : s.rate === null
             ? "확인 불가"
             : s.rate < 50
               ? "여유"
@@ -70,11 +75,11 @@ function Congestion({ seats }) {
       </div>
       <div className="row">
         <span className="muted small">확인 좌석 기준 이용률</span>
-        <strong className="rate">{s.rate === null ? "—" : `${s.rate}%`}</strong>
+        <strong className="rate">{!known ? "—" : s.rate === null ? "—" : `${s.rate}%`}</strong>
       </div>
       <Bar value={s.rate} round />
       <p className="muted small">
-        착석 {s.occupied} / 확인 {s.known}석 · 미확인 {s.unknown}석
+        {known ? `착석 ${s.occupied} / 확인 ${s.known}석 · 미확인 ${s.unknown}석` : `좌석 현황 · ${missing}`}
       </p>
     </div>
   );
@@ -92,6 +97,15 @@ function Home({ data, now, go }) {
           <img src="/assets/settings.svg" alt="" />
         </button>
       </div>
+      {!data.roomsKnown && <section className="room-home">
+        <p className="muted">열람실 목록 · {data.loading ? "불러오는 중" : unavailable}</p>
+        {!data.rooms.length && <Card className="room-card">
+          <Congestion seats={[]} known={false} missing={data.loading ? "불러오는 중" : unavailable} />
+          <div className="stats">{["관리 좌석", "예약 중", "확인 필요"].map((label) =>
+            <div key={label}><strong>—</strong><span>{label}</span></div>)}</div>
+        </Card>}
+      </section>}
+      {data.roomsKnown && !data.rooms.length && <p className="empty">등록된 열람실이 없습니다.</p>}
       {data.rooms.map((room) => {
         const seats = seatsFor(data, room.id, now),
           s = summary(seats);
@@ -103,12 +117,12 @@ function Home({ data, now, go }) {
               onClick={() => go(`rooms/${room.id}`)}
               aria-label={`${room.name} 예약 데이터 관리`}
             >
-              <Congestion seats={seats} />
+              <Congestion seats={seats} known={room.seatsKnown} />
               <div className="stats">
                 {[
-                  [seats.length, "관리 좌석"],
-                  [s.reserved, "예약 중"],
-                  [s.attention, "확인 필요"],
+                  [room.seatsKnown ? seats.length : unavailable, "관리 좌석"],
+                  [room.seatsKnown && data.currentKnown ? s.reserved : unavailable, "예약 중"],
+                  [room.seatsKnown && data.currentKnown ? s.attention : unavailable, "확인 필요"],
                 ].map(([value, label]) => (
                   <div key={label}>
                     <strong>{value}</strong>
@@ -123,9 +137,10 @@ function Home({ data, now, go }) {
     </main>
   );
 }
-function RoomPage({ room, seats, now, go }) {
+function RoomPage({ data, room, seats, now, go }) {
   const [filter, setFilter] = useState("all"),
     s = summary(seats);
+  const countsKnown = room.seatsKnown && data.currentKnown;
   const groups = [
     ["실제 착석", seats.filter((s) => s.occupied)],
     ["예약 중 · 비착석", seats.filter((s) => s.reservation && !s.occupied)],
@@ -136,18 +151,18 @@ function RoomPage({ room, seats, now, go }) {
     <main>
       <h2 className="room-heading">{room.name}</h2>
       <Card>
-        <Congestion seats={seats} />
+        <Congestion seats={seats} known={room.seatsKnown} />
 
         <div className="metrics">
-          {groups.map(([label, items]) => (
+          {groups.map(([label, items], index) => (
             <div key={label}>
               <span>{label}</span>
-              <strong>{items.length}석</strong>
+              <strong>{room.seatsKnown && (data.currentKnown || index === 0 || index === 3) ? `${items.length}석` : unavailable}</strong>
               <small>
-                {items.length
+                {room.seatsKnown && (data.currentKnown || index === 0 || index === 3) && items.length
                   ? `${items.map((s) => s.number).join(" · ")}번`
                   : "—"}
-                {label === "예약 없이 착석" && items.length
+                {data.currentKnown && label === "예약 없이 착석" && items.length
                   ? " · 예약 없음/만료"
                   : ""}
               </small>
@@ -170,7 +185,7 @@ function RoomPage({ room, seats, now, go }) {
             aria-pressed={filter === key}
             onPress={() => setFilter(key)}
           >
-            {label} {count}
+            {label} {(key === "all" ? room.seatsKnown : countsKnown) ? count : "—"}
           </Button>
         ))}
       </div>
@@ -178,7 +193,7 @@ function RoomPage({ room, seats, now, go }) {
         가상 예약 등록
       </Button>
       <div className="seat-list">
-        {seats
+        {(filter === "all" || countsKnown ? seats : [])
           .filter(
             (s) =>
               filter === "all" ||
@@ -196,12 +211,12 @@ function RoomPage({ room, seats, now, go }) {
                 </a>
               </div>
               <p className={`small ${s.attention ? "danger" : "muted"}`}>
-                {s.status}
+                {data.currentKnown ? s.status : `${s.unknown ? "착석 미확인" : s.occupied ? "착석" : "비착석"} · 예약 ${unavailable}`}
               </p>
               {s.reservation && <Bar value={progress(s.reservation, now)} />}
             </article>
           ))}
-        {!seats.some(
+        {!room.seatsKnown || (filter !== "all" && !countsKnown) ? <p className="empty">{unavailable}</p> : !seats.some(
           (s) =>
             filter === "all" ||
             (filter === "reserved" ? s.reservation : s.attention),
@@ -223,7 +238,7 @@ function SeatPage({ data, room, seat, now, go, commit }) {
       <div className="seat-title">
         <h2>{seat.number}번 좌석</h2>
         <span className="badge">
-          ● {r ? "예약 중" : seat.unknown ? "확인 불가" : "예약 없음"}
+          ● {!data.currentKnown ? unavailable : r ? "예약 중" : seat.unknown ? "확인 불가" : "예약 없음"}
         </span>
       </div>
       <p className="muted subtitle">
@@ -246,19 +261,20 @@ function SeatPage({ data, room, seat, now, go, commit }) {
           </>
         ) : (
           <>
-            <p className="muted small">현재 진행 중인 예약이 없습니다.</p>
+            <p className="muted small">{data.currentKnown ? "현재 진행 중인 예약이 없습니다." : `현재 예약 · ${unavailable}`}</p>
             <Button onPress={() => go(`create/${room.id}/${seat.number}`)}>
               가상 예약 등록
             </Button>
           </>
         )}
+        {!data.scheduledKnown && <Info label="다음 예약">{unavailable}</Info>}
         {next && !r && (
           <Info label="다음 예약">{dateTime(next.startsAt)} 시작</Info>
         )}
       </Card>
       <Card>
         <h3>좌석 상태</h3>
-        <Info label="최종 상태">{seat.status}</Info>
+        <Info label="최종 상태">{data.currentKnown ? seat.status : unavailable}</Info>
         <Info label="착석 상태">
           {seat.unknown ? "확인 불가" : seat.occupied ? "착석 중" : "비착석"}
         </Info>
@@ -319,7 +335,7 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
   const [studentId, setStudentId] = useState("");
   const [start, setStart] = useState(inputTime(original?.startsAt ?? base));
   const [end, setEnd] = useState(
-    inputTime(original?.endsAt ?? base + data.settings.duration * MINUTE),
+    inputTime(original?.endsAt ?? (data.settings ? base + data.settings.duration * MINUTE : NaN)),
   );
   const [error, setError] = useState("");
   const startsAt = parseTime(start),
@@ -332,7 +348,7 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
   if (edit && !original)
     return (
       <main>
-        <h2>예약이 종료되었습니다.</h2>
+        <h2>{data.currentKnown ? "예약이 종료되었습니다." : `현재 예약 · ${unavailable}`}</h2>
         <p>좌석 상태를 확인하고 새 예약을 등록해주세요.</p>
         <Button onPress={back}>좌석으로 돌아가기</Button>
       </main>
@@ -346,8 +362,10 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
         r.startsAt > now,
     )
     .sort((a, b) => a.startsAt - b.startsAt)[0];
+  const canSubmit = room.seatsKnown && data.currentKnown && data.scheduledKnown && !!number;
   async function submit(e) {
     e.preventDefault();
+    if (!canSubmit) return;
     const candidate = {
       id: original?.id,
       roomId: room.id,
@@ -483,7 +501,7 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
               {Number.isFinite(endsAt) ? dateTime(endsAt) : "—"}
             </Info>
             <Info label="다음 예약">
-              {next ? `${dateTime(next.startsAt)} 시작` : "없음"}
+              {!data.scheduledKnown ? unavailable : next ? `${dateTime(next.startsAt)} 시작` : "없음"}
             </Info>
           </Card>
         ) : (
@@ -498,11 +516,12 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
             {error}
           </p>
         )}
+        {!canSubmit && <p role="status">좌석 또는 예약 정보 · {unavailable}</p>}
         <div className="actions">
           <Button variant="neutral" onPress={back}>
             취소
           </Button>
-          <Button type="submit">
+          <Button type="submit" isDisabled={!canSubmit}>
             {edit ? "변경사항 저장" : "가상 예약 등록"}
           </Button>
         </div>
@@ -511,8 +530,8 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
   );
 }
 function Settings({ data, commit }) {
-  const [duration, setDuration] = useState(String(data.settings.duration)),
-    [limit, setLimit] = useState(String(data.settings.maxExtensions)),
+  const [duration, setDuration] = useState(String(data.settings?.duration ?? "")),
+    [limit, setLimit] = useState(String(data.settings?.maxExtensions ?? "")),
     [error, setError] = useState("");
   return (
     <main className="compact">
@@ -549,6 +568,8 @@ function Settings({ data, commit }) {
             min="1"
             max="1440"
             step="1"
+            disabled={!data.settings}
+            placeholder={data.loading ? "불러오는 중" : unavailable}
             value={duration}
             onChange={(e) => setDuration(e.target.value)}
           />
@@ -561,6 +582,8 @@ function Settings({ data, commit }) {
             min="0"
             max="100"
             step="1"
+            disabled={!data.settings}
+            placeholder={data.loading ? "불러오는 중" : unavailable}
             value={limit}
             onChange={(e) => setLimit(e.target.value)}
           />
@@ -578,13 +601,13 @@ function Settings({ data, commit }) {
             {error}
           </p>
         )}
-        <Button type="submit">설정 저장</Button>
+        <Button type="submit" isDisabled={!data.settings}>설정 저장</Button>
       </form>
     </main>
   );
 }
 export default function App() {
-  const [data, setData] = useState(null),
+  const [data, setData] = useState(loadingData),
     [error, setError] = useState(""),
     pending = useRef(false),
     [route, setRoute] = useState(routeFromHash),
@@ -663,7 +686,6 @@ export default function App() {
     return true;
   }
 
-  if (!data) return <main className="compact"><p role="status">{error || "예약 정보를 불러오는 중입니다."}</p></main>;
   const invalidRoute = !["home", "settings"].includes(page) &&
     (!room || (["seat", "edit"].includes(page) && !seat));
   const back = () =>
@@ -686,7 +708,7 @@ export default function App() {
       )}
       {error && <p role="alert">{error}</p>}
       {invalidRoute ? (
-        <main><p>해당 열람실 또는 좌석을 찾을 수 없습니다.</p><Button onPress={() => go("home")}>홈으로</Button></main>
+        <main><p>{data.loading ? "불러오는 중" : (!room ? !data.roomsKnown : !room.seatsKnown) ? `열람실 또는 좌석 정보 · ${unavailable}` : "해당 열람실 또는 좌석을 찾을 수 없습니다."}</p><Button onPress={() => go("home")}>홈으로</Button></main>
       ) : page === "home" ? (
         <Home data={data} now={now} go={go} />
       ) : page === "rooms" ? (
@@ -708,7 +730,7 @@ export default function App() {
           commit={commit}
         />
       ) : page === "settings" ? (
-        <Settings data={data} commit={commit} />
+        <Settings key={Boolean(data.settings)} data={data} commit={commit} />
       ) : (
         <BookingForm
           key={`${page}/${roomId}/${number}`}
