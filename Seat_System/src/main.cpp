@@ -5,10 +5,10 @@
 #include "HX711.h"
 
 // ==================== [1. 설정 영역] ====================
-const char* ssid = "GalaxyS26+5201";       // 와이파이 이름
+const char* ssid = "GalaxyS26+5201";       // 와이파이 이름 (모바일 핫스팟 2.4GHz)
 const char* password = "11111111";         // 와이파이 비밀번호
 
-// 백엔드 테스트 서버 주소 (실제 테스트용 서버 IP·포트 및 seat_id로 변경)
+// 백엔드 서버 주소 (프로덕션/시연용 서버 IP·포트 및 seat_id)
 const char* serverGetUrl = "http://10.44.160.72:8000/seats/1/reservation-info";
 const char* serverPostUrl = "http://10.44.160.72:8000/seats/1/occupancy";
 
@@ -42,6 +42,7 @@ LedMode currentLedMode = LED_OFF;
 // 서버 및 센서 상태 변수
 String serverSeatStatus = "UNKNOWN";
 String serverTargetLed = "OFF";
+bool isTargetLedInvalid = false; // target_led 누락 또는 예외 값 여부
 bool isOccupied = false;
 
 // 오류 및 초기화 추적 변수
@@ -109,15 +110,24 @@ void setup() {
     scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
     scale.tare();
 
-    // Wi-Fi 연결 시작
+    // Wi-Fi 연결 시작 (핫스팟이 나중에 켜져도 5초 주기로 재시도하여 자동 연결)
     Serial.println();
     Serial.print("WiFi 연결 중: ");
     Serial.println(ssid);
 
+    WiFi.mode(WIFI_STA);
     WiFi.begin(ssid, password);
+    unsigned long wifiStartAttempt = millis();
+
     while (WiFi.status() != WL_CONNECTED) {
         delay(500);
         Serial.print(".");
+        if (millis() - wifiStartAttempt >= 5000) {
+            wifiStartAttempt = millis();
+            Serial.println("\n>>> 첫 Wi-Fi 연결 재시도 중...");
+            WiFi.disconnect();
+            WiFi.begin(ssid, password);
+        }
     }
 
     Serial.println("\nWiFi 연결 성공!");
@@ -165,7 +175,23 @@ void loop() {
 
                 if (!error) {
                     serverSeatStatus = doc["seat_status"] | "UNKNOWN";
-                    serverTargetLed = doc["target_led"] | "OFF";
+
+                    // target_led 누락 및 허용되지 않은 값 검증
+                    if (doc["target_led"].isNull() || !doc["target_led"].is<const char*>()) {
+                        serverTargetLed = "OFF";
+                        isTargetLedInvalid = true;
+                        Serial.println(">>> [경고] target_led 누락 또는 문자열 아님 -> 소등(OFF) 처리");
+                    } else {
+                        String rawLed = doc["target_led"].as<String>();
+                        if (rawLed == "OFF" || rawLed == "BLUE_ON" || rawLed == "ORANGE_ON" || rawLed == "RED_BLINK") {
+                            serverTargetLed = rawLed;
+                            isTargetLedInvalid = false;
+                        } else {
+                            serverTargetLed = "OFF";
+                            isTargetLedInvalid = true;
+                            Serial.printf(">>> [경고] 허용되지 않은 target_led 값 수신(%s) -> 소등(OFF) 처리\n", rawLed.c_str());
+                        }
+                    }
 
                     hasServerSynced = true;
                     isServerError = false;
@@ -225,7 +251,7 @@ void loop() {
             currentLedMode = LED_RED_BLINK;
         }
         else {
-            // "OFF", target_led 누락, 또는 기타 예외 값 수신 시 소등
+            // 정상 "OFF" 또는 예외 소등 상태
             currentLedMode = LED_OFF;
         }
         // ================================================================================
