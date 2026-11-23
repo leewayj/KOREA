@@ -4,7 +4,7 @@ import SeatPage from './components/SeatPage'
 import ReservationPage from './components/ReservationPage'
 import ReturnSeatDialog from './components/ReturnSeatDialog'
 import ExpiredReservationPage from './components/ExpiredReservationPage'
-import { createPreviewReservation, readPreviewReservation, savePreviewReservation, isReservationActive, canChangeSeat, changeReservationSeat, extendReservation, createReservationFixture, reservationDuration, expirationWarningMs, isReservationEndingSoon } from './data/reservation'
+import { createPreviewReservation, readPreviewReservation, savePreviewReservation, isReservationActive, canChangeSeat, changeReservationSeat, extendReservation, createReservationFixture, reservationDuration, expirationWarningMs, isReservationEndingSoon, formatDuration } from './data/reservation'
 import { rooms as previewRooms } from './data/rooms'
 import { reservationApiEnabled, fetchSeats, fetchSeat, fetchMyReservation, reserveApiSeat, moveApiReservation, extendApiReservation, endApiReservation } from './data/reservationApi'
 import { session } from './api'
@@ -339,7 +339,7 @@ function App({ accountControl }) {
                 () => extendApiReservation(reservation.id),
                 (saved) => {
                   setReservation({ ...reservation, endsAt: saved.ends_at * 1000, effectiveStatus: saved.effective_status })
-                  showNotice('예약 시간이 2시간 연장되었습니다.')
+                  showNotice(`예약 시간이 ${formatDuration(saved.policy_default_duration_seconds * 1000)} 연장되었습니다.`)
                 },
               )
             }
