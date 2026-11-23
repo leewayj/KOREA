@@ -226,6 +226,9 @@ form {
 .stats strong {
   font-size: 28px;
 }
+.stats .unknown-value {
+  font-size: 14px;
+}
 .stats span {
   font-size: 12px;
   color: var(--muted);

@@ -4,7 +4,7 @@ import SeatPage from './components/SeatPage'
 import ReservationPage from './components/ReservationPage'
 import ReturnSeatDialog from './components/ReturnSeatDialog'
 import ExpiredReservationPage from './components/ExpiredReservationPage'
-import { createPreviewReservation, readPreviewReservation, savePreviewReservation, isReservationActive, canChangeSeat, changeReservationSeat, extendReservation, createReservationFixture, reservationDuration, timeFormat, expirationWarningMs, isReservationEndingSoon } from './data/reservation'
+import { createPreviewReservation, readPreviewReservation, savePreviewReservation, isReservationActive, canChangeSeat, changeReservationSeat, extendReservation, createReservationFixture, reservationDuration, expirationWarningMs, isReservationEndingSoon } from './data/reservation'
 import { rooms as previewRooms } from './data/rooms'
 import { reservationApiEnabled, fetchSeats, fetchSeat, fetchMyReservation, reserveApiSeat, moveApiReservation, extendApiReservation, endApiReservation } from './data/reservationApi'
 import { session } from './api'
@@ -279,9 +279,6 @@ function App({ accountControl }) {
   return (
     <div ref={appShell} className={`app-shell${['seats', 'selected'].includes(page) ? ' seat-shell' : ['reservation', 'expired'].includes(page) ? ' reservation-shell' : ''}`}>
       <header className="app-header" inert={selectedSeat !== null || showReturnDialog}>
-        <div className="system-status" aria-hidden="true">
-          <span>{timeFormat.format(now)}</span><Icon name="v02-battery" />
-        </div>
         <div className="navigation">
           {page === 'home' ? (accountControl ?? <span className="navigation-spacer" aria-hidden="true" />) : (
             <button className="icon-button" aria-label={['seats', 'selected'].includes(page) ? '열람실 목록으로 돌아가기' : endingSoon ? '홈으로 돌아가기' : 'HOME'} onClick={() => {

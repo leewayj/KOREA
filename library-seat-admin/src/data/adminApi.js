@@ -1,3 +1,11 @@
+// The room identities are defined in seed.sql. Live lists take precedence, including an empty list.
+export const defaultRoomDirectory = [
+  { id: '1', name: '제1열람실 (2F)' },
+  { id: '2', name: '제2열람실 (4F)' },
+  { id: '3', name: '노상일 HOLMZ (4F)' },
+  { id: '4', name: '집중열람실 (4F)' },
+].map((room) => ({ ...room, seats: [], seatsKnown: false }));
+
 export async function adminRequest(path, { token, method = 'GET', body, signal } = {}) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -5,7 +13,9 @@ export async function adminRequest(path, { token, method = 'GET', body, signal }
   const response = await fetch(`/api${path}`, {
     method, headers, signal, body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const result = await response.json();
+  const result = await response.json().catch(() => {
+    throw new Error('서버 응답을 확인할 수 없습니다.');
+  });
   if (!response.ok) {
     throw Object.assign(new Error(result.error?.message || 'API 요청에 실패했습니다.'), { status: response.status });
   }
@@ -24,43 +34,61 @@ async function fetchPages(path, options) {
 
 export async function loadAdminData(token, signal) {
   const options = { token, signal };
-  const [floors, rooms, seats, reservations, settings] = await Promise.all([
+  const results = await Promise.allSettled([
     adminRequest('/floors', options),
     adminRequest('/rooms', options),
     fetchPages('/seats', options),
-    fetchPages('/reservations?effective_status=IN_USE', options).then(async (current) =>
-      current.concat(await fetchPages('/reservations?effective_status=SCHEDULED', options))),
+    fetchPages('/reservations?effective_status=IN_USE', options),
+    fetchPages('/reservations?effective_status=SCHEDULED', options),
     adminRequest('/admin/reservation-settings', options),
   ]);
-  const floorsById = new Map(floors.map((floor) => [floor.id, floor]));
-  const roomsByLocation = new Map();
-  const roomList = rooms.map((room) => {
+  signal?.throwIfAborted();
+  const [floors, rooms, seats, current, scheduled, settings] = results.map(
+    (result) => result.status === 'fulfilled' ? result.value : null,
+  );
+  const floorsById = new Map((floors ?? []).map((floor) => [floor.id, floor]));
+  const byLocation = new Map();
+  const roomList = (rooms ?? []).map((room) => {
     const floor = floorsById.get(room.floor_id);
-    const item = { id: String(room.id), name: `${room.name} (${floor?.name ?? room.floor_id})`, seats: [] };
-    roomsByLocation.set(`${floor?.code}/${room.code}`, item);
+    const item = { id: String(room.id), name: floor ? `${room.name} (${floor.name})` : room.name, seats: [] };
+    if (floor) byLocation.set(`${floor.code}/${room.code}`, item);
     return item;
   });
-
+  const roomsByCode = new Map();
+  for (const room of rooms ?? []) {
+    if (!roomsByCode.has(room.code)) roomsByCode.set(room.code, []);
+    roomsByCode.get(room.code).push(room);
+  }
+  const byId = new Map(roomList.map((room) => [room.id, room]));
   const seatsById = new Map();
-  for (const seat of seats) {
-    const room = roomsByLocation.get(`${seat.floor_code}/${seat.room_code}`);
+  for (const seat of seats ?? []) {
+    const location = `${seat.floor_code}/${seat.room_code}`;
+    let room = byLocation.get(location);
+    if (!room && !floors && roomsByCode.get(seat.room_code)?.length === 1) {
+      room = byId.get(String(roomsByCode.get(seat.room_code)[0].id));
+    }
+    if (!room && !rooms) {
+      room = { id: encodeURIComponent(location), name: `${seat.room_name} (${seat.floor_name})`, seats: [] };
+      roomList.push(room);
+    }
     if (!room) continue;
+    byLocation.set(location, room);
     room.seats.push(seat);
     seatsById.set(seat.seat_id, { roomId: room.id, seat: seat.seat_number });
   }
-
+  for (const room of roomList) {
+    const source = rooms?.find((item) => String(item.id) === room.id);
+    room.seatsKnown = seats !== null && !(source && !floors && roomsByCode.get(source.code)?.length > 1);
+  }
   return {
-    rooms: roomList,
-    reservations: [...new Map(reservations.map((reservation) => [reservation.id, reservation])).values()].flatMap((reservation) => {
-      const seat = seatsById.get(reservation.seat_id);
-      return seat ? [{
-        ...seat,
-        id: reservation.id,
-        startsAt: reservation.starts_at * 1000,
-        endsAt: reservation.ends_at * 1000,
-        maxExtensions: reservation.max_extensions,
-      }] : [];
+    rooms: rooms === null && !roomList.length ? defaultRoomDirectory : roomList,
+    roomsKnown: rooms !== null,
+    currentKnown: current !== null,
+    scheduledKnown: scheduled !== null,
+    reservations: [...new Map([...(current ?? []), ...(scheduled ?? [])].map((r) => [r.id, r])).values()].flatMap((r) => {
+      const seat = seatsById.get(r.seat_id);
+      return seat ? [{ ...seat, id: r.id, startsAt: r.starts_at * 1000, endsAt: r.ends_at * 1000, maxExtensions: r.max_extensions }] : [];
     }),
-    settings: { duration: settings.default_duration_seconds / 60, maxExtensions: settings.max_extensions },
+    settings: settings && { duration: settings.default_duration_seconds / 60, maxExtensions: settings.max_extensions },
   };
 }

@@ -19,8 +19,6 @@
 .app-shell > main > *, .app-shell > footer { flex-shrink: 0; }
 
 .app-header { flex-shrink: 0; color: var(--blue-deep); background: white; }
-.system-status { height: 32px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; font-size: 12px; line-height: 18px; }
-.system-status img { display: block; }
 .reservation-navigation-menu { position: relative; z-index: 2; width: 24px; height: 24px; }
 .reservation-navigation-menu summary { cursor: pointer; display: block; list-style: none; }
 .reservation-navigation-menu summary::-webkit-details-marker { display: none; }
