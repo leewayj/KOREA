@@ -8,7 +8,7 @@
 const char* ssid = "GalaxyS26+5201";       // 와이파이 이름
 const char* password = "11111111";         // 와이파이 비밀번호
 
-// 백엔드 서버 주소 (백엔드 담당자 공유 IP·포트 및 seat_id로 변경)
+// 백엔드 테스트 서버 주소 (실제 테스트용 서버 IP·포트 및 seat_id로 변경)
 const char* serverGetUrl = "http://10.44.160.72:8000/seats/1/reservation-info";
 const char* serverPostUrl = "http://10.44.160.72:8000/seats/1/occupancy";
 
@@ -56,6 +56,7 @@ unsigned long lastSensorOkMillis = 0;
 unsigned long previousBlinkMillis = 0;
 unsigned long previousServerMillis = 0;
 unsigned long previousSensorMillis = 0;
+unsigned long previousWifiCheckMillis = 0;
 bool blinkState = false;
 // ========================================================
 
@@ -128,6 +129,16 @@ void setup() {
 }
 
 void loop() {
+    // 0. Wi-Fi 연결 끊김 감지 및 자동 재연결 (5초 주기 체크)
+    if (WiFi.status() != WL_CONNECTED) {
+        if (millis() - previousWifiCheckMillis >= 5000) {
+            previousWifiCheckMillis = millis();
+            Serial.println(">>> Wi-Fi 끊김 감지! 재연결 시도 중...");
+            WiFi.disconnect();
+            WiFi.begin(ssid, password);
+        }
+    }
+
     // 1. 키보드 입력 처리 ('t' 누르면 영점 조절)
     if (Serial.available() > 0) {
         char cmd = Serial.read();
@@ -163,8 +174,7 @@ void loop() {
                     Serial.println(">>> JSON 해석 오류");
                 }
             } else {
-                Serial.print(">>> 서버 GET 에러 코드: ");
-                Serial.println(httpResponseCode);
+                Serial.printf(">>> 서버 GET 에러 코드: HTTP %d\n", httpResponseCode);
             }
             http.end();
         }
@@ -215,7 +225,7 @@ void loop() {
             currentLedMode = LED_RED_BLINK;
         }
         else {
-            // "OFF" 또는 기타 예외 값 수신 시 소등
+            // "OFF", target_led 누락, 또는 기타 예외 값 수신 시 소등
             currentLedMode = LED_OFF;
         }
         // ================================================================================
