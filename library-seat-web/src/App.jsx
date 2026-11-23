@@ -128,6 +128,46 @@ function App({ accountControl }) {
     return () => controller.abort()
   }, [loadVersion])
 
+  // Keep reservation details in sync with administrator edits while the user
+  // page is open. The countdown itself is driven by the local one-second clock.
+  useEffect(() => {
+    if (!apiMode || !reservation?.id || loading) return
+    const controller = new AbortController()
+
+    async function syncReservation() {
+      try {
+        const saved = await fetchMyReservation(controller.signal)
+        if (controller.signal.aborted) return
+        if (!saved) {
+          setReservation((current) => current?.id === reservation.id ? null : current)
+          return
+        }
+        const seat = apiSeats.find((item) => item.seat_id === saved.seat_id)
+          ?? await fetchSeat(saved.seat_id, controller.signal)
+        if (controller.signal.aborted || !seat || !roomIdsByCode[seat.room_code]) return
+        const updated = toWebReservation(saved, seat)
+        setReservation((current) => current?.id === updated.id
+          && current.startsAt === updated.startsAt
+          && current.endsAt === updated.endsAt
+          && current.seat === updated.seat
+          && current.roomId === updated.roomId
+          ? current
+          : updated)
+      } catch {
+        // Keep the last known reservation when a temporary poll fails.
+      }
+    }
+
+    syncReservation()
+    const timer = window.setInterval(syncReservation, 2000)
+    window.addEventListener('focus', syncReservation)
+    return () => {
+      controller.abort()
+      window.clearInterval(timer)
+      window.removeEventListener('focus', syncReservation)
+    }
+  }, [apiSeats, loading, reservation?.id])
+
   function refresh() {
     setLoadVersion((version) => version + 1)
   }

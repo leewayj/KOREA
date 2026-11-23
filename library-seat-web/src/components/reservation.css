@@ -13,7 +13,7 @@
 .reservation-clock-ring { position: absolute; inset: 0; }
 .reservation-clock img { position: absolute; inset: 0; }
 .reservation-clock span { font-size: 8.643px; line-height: 1.4; }
-.reservation-clock strong { font-size: 20.429px; line-height: 1.4; }
+.reservation-clock strong { font-size: 12px; line-height: 1.4; letter-spacing: -.35px; }
 .reservation-clock small { font-size: 7.857px; line-height: 1.4; }
 .reservation-time-details { border-top: 1px solid var(--divider); padding-top: 9px; }
 .reservation-time-details h3 { margin: 0 0 8px; font-size: 16px; line-height: 24px; }
