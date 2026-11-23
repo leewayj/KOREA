@@ -14,7 +14,7 @@ export default function ExpiredReservationPage({ reservation, room, now, onReser
         <div><dt>종료 시간</dt><dd>{endLabel} {timeFormat.format(reservation.endsAt)}</dd></div>
         <div><dt>현재 상태</dt><dd className="expired-status">예약 종료</dd></div>
       </dl>
-      <p className="expired-guidance">계속 이용하려면 좌석을 다시 예약해 주세요.<br />이용을 마쳤다면 자리를 비워 주세요.</p>
+      <p className="expired-guidance">계속 이용하시려면 좌석을 다시 예약해 주시고, 이용을 마치셨다면 자리를 정리해 주세요.</p>
     </main>
     <footer className="reservation-actions">
       <Button onPress={onReserve}>새로 예약하기</Button>

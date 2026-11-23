@@ -7,10 +7,10 @@
 .expired-reservation h2, .expired-status { color: #c83838; }
 .expired-reservation h3 { margin: 0; color: var(--blue-deep); font-size: 18px; line-height: 27px; }
 .expired-guidance { font-size: 16px; line-height: 24px; letter-spacing: -.4px; }
-.reservation-details.ending-soon .reservation-status strong, .ending-soon .reservation-clock { color: #dd0006; }
-.ending-soon .reservation-clock span { font-size: 11px; }
-.ending-soon .reservation-clock strong { font-size: 26px; }
-.ending-soon .reservation-clock small { font-size: 10px; }
+.reservation-details.ending-soon { background: #fff4e7; }
+.ending-soon .reservation-status, .ending-soon .reservation-clock, .ending-soon .reservation-seat-number { color: #9b4700; }
+.ending-soon .reservation-time-details { border-top-color: #f4d7b7; }
+.ending-soon .reservation-time-details dd { color: #18324b; }
 .reservation-clock-warning { position: absolute; inset: 0; }
 .reservation-clock .reservation-clock-warning img { inset: 0 auto auto 22px; }
 @media (max-width: 360px) {

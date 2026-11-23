@@ -4,6 +4,7 @@
 .api-auth form, .api-auth label { display: grid; gap: 12px; }
 .api-auth form { gap: 20px; }
 .api-auth input { width: 100%; padding: 12px; border: 1px solid #b9c9d8; border-radius: 8px; box-sizing: border-box; font: inherit; }
-.api-auth button, .api-session-button { padding: 10px 16px; cursor: pointer; border: 1px solid #b9c9d8; border-radius: 8px; background: #eef5fc; color: #004a86; font: inherit; }
+.api-auth button { padding: 10px 16px; cursor: pointer; border: 1px solid #b9c9d8; border-radius: 8px; background: #eef5fc; color: #004a86; font: inherit; }
 .api-auth [role=alert] { color: #b3261e; }
-.api-session-button { position: fixed; right: 12px; bottom: 12px; z-index: 5; font-size: 14px; }
+.api-account-actions { display: grid; gap: 12px; }
+.account-control { width: 24px; height: 24px; left: 24px; }

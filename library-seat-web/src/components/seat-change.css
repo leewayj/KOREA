@@ -1,6 +1,19 @@
 .seat-change-page { gap: 12px; padding-top: 16px; padding-bottom: 16px; }
-.seat-change-title { padding-top: 8px; margin-bottom: 4px; font-size: 24px; font-weight: 700; line-height: 36px; color: var(--blue-deep); letter-spacing: -.4px; }
+.seat-change-page:has(.seat-change-title) { padding-top: 24px; }
+.seat-change-title { margin-bottom: 4px; font-size: 24px; font-weight: 700; line-height: 36px; color: var(--blue-deep); letter-spacing: -.4px; }
 .seat-change-page .seat-map { height: 356px; padding-block: 20px; }
 .seat-footer .seat-footer-button.ready { background: var(--blue-main); color: white; cursor: pointer; }
-.seat-modal-backdrop.change-backdrop { z-index: 5; }
+.seat-modal-backdrop.change-backdrop { z-index: 5; top: 96px; }
 .seat-modal-backdrop.change-backdrop + .seat-footer { z-index: 4; }
+
+.seat-change-dialog .seat-change-comparison {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 8px;
+  color: var(--blue-deep);
+  text-align: center;
+}
+.seat-change-seat { display: flex; flex-direction: column; gap: 4px; }
+.seat-change-comparison strong, .seat-change-arrow { font-size: 24px; font-weight: 700; line-height: 32px; }
+.seat-change-room { color: var(--muted); font-size: 12px; line-height: 18px; }

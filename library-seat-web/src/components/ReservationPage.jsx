@@ -4,9 +4,8 @@ import './reservation.css'
 import { dateFormat, formatDuration, timeFormat } from '../data/reservation'
 import './reservation-flow.css'
 
-export default function ReservationPage({ reservation, room, onChange, onExtend, returnOpen, onRequestReturn, now, saving }) {
+export default function ReservationPage({ reservation, room, onChange, onExtend, returnOpen, onRequestReturn, now, saving, endingSoon }) {
   const remaining = Math.max(0, reservation.endsAt - now)
-  const endingSoon = remaining > 0 && remaining <= 10 * 60000
   const minutes = Math.ceil(remaining / 60000)
   const remainingLabel = `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`
   const duration = reservation.endsAt - reservation.startsAt
@@ -25,8 +24,8 @@ export default function ReservationPage({ reservation, room, onChange, onExtend,
           <div className="reservation-seat-time">
             <strong className="reservation-seat-number">{reservation.seat}번</strong>
             <div className="reservation-clock" role="timer" aria-label={`남은 시간 ${Math.floor(minutes / 60)}시간 ${minutes % 60}분`}>
-              <img src="/assets/reservation-time-track.svg" alt="" className="reservation-clock-track" />
-              <span className={endingSoon ? "reservation-clock-warning" : "reservation-clock-ring"} style={{ maskImage: `conic-gradient(transparent ${elapsedAngle}deg, black ${elapsedAngle}deg)` }}><img src={endingSoon ? "/assets/reservation-time-warning.svg" : "/assets/reservation-time-ring.svg"} alt="" /></span>
+              <img src={endingSoon ? "/assets/v02-timer-warning-track.svg" : "/assets/v02-timer-track.svg"} alt="" className="reservation-clock-track" />
+              <span className={endingSoon ? "reservation-clock-warning" : "reservation-clock-ring"} style={{ maskImage: `conic-gradient(transparent ${elapsedAngle}deg, black ${elapsedAngle}deg)` }}><img src={endingSoon ? "/assets/v02-timer-warning-ring.svg" : "/assets/v02-timer-ring.svg"} alt="" /></span>
               <span>남은 시간</span><strong>{remainingLabel}</strong><small>시간:분</small>
             </div>
           </div>

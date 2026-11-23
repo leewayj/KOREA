@@ -46,11 +46,11 @@ export default function SeatPage({ room, selectedSeat, onSelect, mySeat, previou
   return (
     <>
       <main className={`seat-page${changeMode ? ' seat-change-page' : ''}`} aria-label={`${room.name} 좌석 배치도`} inert={isSelecting}>
-        {changeMode && <h2 className="seat-change-title">변경할 좌석을 선택해 주세요</h2>}
+        {changeMode && !isSelecting && <h2 className="seat-change-title">변경할 좌석을 선택해 주세요</h2>}
         <div className="seat-room-heading">
           <h2>{room.name}</h2>
           <button className="icon-button" aria-label="좌석 현황 새로고침" onClick={onRefresh}>
-            <img src={changeMode ? '/assets/reservation-refresh.svg' : '/assets/seat-refresh-v3.svg'} alt="" draggable="false" />
+            <img src="/assets/v02-refresh.svg" alt="" draggable="false" />
           </button>
         </div>
         <ul className="seat-legend" aria-label="좌석 상태 안내">
@@ -69,10 +69,10 @@ export default function SeatPage({ room, selectedSeat, onSelect, mySeat, previou
       {isSelecting && <div className={`seat-modal-backdrop${changeMode ? ' change-backdrop' : ''}`} aria-hidden="true" onClick={() => { if (!booking) onSelect(null) }} />}
       <footer className="seat-footer" inert={isSelecting}>
         <p id="seat-scroll-help">{changeMode && !apiMode ? '좌우로 밀어 전체 72석을 확인하세요' : '좌우로 밀어 전체 좌석을 확인하세요.'}</p>
-        <Button isDisabled={!changeMode} className={`seat-footer-button${changeMode ? ' ready' : ''}`} onPress={onContinue}>{changeMode ? '내 예약 정보' : '좌석을 선택해 주세요'}</Button>
+        <Button isDisabled={!changeMode || isSelecting} className={`seat-footer-button${changeMode && !isSelecting ? ' ready' : ''}`} onPress={onContinue}>{changeMode && !isSelecting ? '예약하기' : '좌석을 선택해 주세요'}</Button>
       </footer>
       {isSelecting && (
-        <section ref={dialog} className="seat-dialog" role="dialog" aria-modal="true" aria-labelledby="seat-dialog-title" aria-describedby={changeMode ? 'seat-change-comparison seat-dialog-description' : 'seat-dialog-description'}>
+        <section ref={dialog} className={changeMode ? 'seat-dialog seat-change-dialog' : 'seat-dialog'} role="dialog" aria-modal="true" aria-labelledby="seat-dialog-title" aria-describedby={changeMode ? 'seat-change-comparison seat-dialog-description' : 'seat-dialog-description'}>
           <h2 id="seat-dialog-title">{changeMode ? '좌석 변경' : `${selectedSeat}번 좌석`}</h2>
           {changeMode && (
             <div className="seat-change-comparison" id="seat-change-comparison">

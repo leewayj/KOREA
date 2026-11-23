@@ -6,6 +6,6 @@ import App from './App.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <ApiSession><App /></ApiSession>
+    <ApiSession>{accountControl => <App accountControl={accountControl} />}</ApiSession>
   </StrictMode>,
 )

@@ -19,7 +19,7 @@ function ActiveReservationCard({ reservation, room, now, onViewReservation }) {
         </div>
         <Button className="home-reservation-details" variant="neutral" size="small" aria-describedby="home-reservation-seat" onPress={onViewReservation}>
           자세히 보기
-          <img src="/assets/reservation-details-chevron.svg" alt="" />
+          <img src="/assets/v02-chevron.svg" alt="" />
         </Button>
       </div>
       <div className="home-reservation-info">
@@ -36,7 +36,6 @@ function ActiveReservationCard({ reservation, room, now, onViewReservation }) {
 export default function HomePage({ rooms, apiMode, onReserve, onManage, reservation, reservationRoom, onViewReservation, now, returnOpen, onRequestReturn }) {
   const user = apiMode ? session()?.user : null
   const student = user ? { studentId: user.s_id, college: user.college, department: user.department, year: null } : apiMode ? { studentId: '로그인 필요', college: '—', department: '—', year: null } : previewStudent
-  const primaryAction = reservation ? '좌석 변경' : '좌석 예약'
   return (
     <main className="home-content" aria-label="홈 서비스" inert={returnOpen}>
       <section className="profile-card" aria-labelledby="profile-title">
@@ -55,7 +54,7 @@ export default function HomePage({ rooms, apiMode, onReserve, onManage, reservat
             <Button onPress={onReserve} variant="primary">좌석 변경</Button>
             <Button onPress={onRequestReturn} variant="neutral">좌석 반납</Button>
           </div>
-        ) : <Button className="reserve-button" onPress={onReserve} variant="primary">{primaryAction}</Button>}
+        ) : <Button className="reserve-button" onPress={onReserve} variant="primary">열람실 현황 및 좌석 예약</Button>}
       </section>
 
       {reservation ? (
@@ -67,7 +66,7 @@ export default function HomePage({ rooms, apiMode, onReserve, onManage, reservat
         </section>
       )}
 
-      <section className="home-card" aria-labelledby="favorite-title">
+      <section className={`home-card${reservation ? '' : ' favorite-unreserved'}`} aria-labelledby="favorite-title">
         <div className="favorite-heading">
           <h2 id="favorite-title">선호 좌석</h2>
           <Button className="manage-button" onPress={onManage} variant="neutral" size="small">관리</Button>
