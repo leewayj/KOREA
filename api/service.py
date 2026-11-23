@@ -77,6 +77,15 @@ def seat_rows(db, now, floor_id=None, room_id=None, seat_id=None, limit=100, off
     return result
 
 
+def room_reservation_time(seconds):
+    if seconds is None:
+        return None
+    try:
+        return datetime.fromtimestamp(seconds, UTC)
+    except (OverflowError, OSError, ValueError) as error:
+        raise APIError(503, 'STATUS_UNAVAILABLE', '예약 시각을 표시할 수 없습니다.') from error
+
+
 def room_summary(seats, calculated_at):
     statuses = Counter(seat['seat_status'] for seat in seats)
     total = len(seats)
@@ -145,6 +154,14 @@ class Service:
 
         calculated_at = datetime.fromtimestamp(now, UTC)
         counts, congestion = room_summary(seats, calculated_at)
+        # Convert database seconds before the response model can infer milliseconds.
+        for seat in seats:
+            seat['starts_at'] = room_reservation_time(seat['starts_at'])
+            seat['ends_at'] = room_reservation_time(seat['ends_at'])
+            upcoming = seat['next_reservation']
+            if upcoming is not None:
+                upcoming['starts_at'] = room_reservation_time(upcoming['starts_at'])
+                upcoming['ends_at'] = room_reservation_time(upcoming['ends_at'])
         return {'room': dict(room), 'serverTime': calculated_at, 'seatCounts': counts,
                 'congestion': congestion, 'hasSimulatedData': bool(simulated), 'seats': seats}
 

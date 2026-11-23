@@ -4,13 +4,53 @@ import unittest
 from datetime import UTC, datetime
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
 from api.db import initialize
 from api.errors import APIError
+from api.main import create_app
 from api.models import RoomStatus
 from api.service import Service, room_summary
 
 
 class RoomStatusTests(unittest.TestCase):
+    def test_http_reservation_dates_use_unix_seconds(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'test.db'
+            initialize(path, demo=True)
+            start = int(datetime(2020, 1, 1, tzinfo=UTC).timestamp())
+            boundary = int(datetime(2670, 1, 1, tzinfo=UTC).timestamp())
+            with sqlite3.connect(path) as db:
+                db.execute("INSERT INTO admins(username,password_hash) VALUES('fixture','unused')")
+                db.execute("INSERT INTO reservation_admin_insert_context VALUES(1,'fixture')")
+                db.executemany('INSERT INTO reservations(seat_id,starts_at,def_time) VALUES(1,?,?)',
+                               [(start, boundary - start), (boundary, 3600)])
+                db.execute('DELETE FROM reservation_admin_insert_context')
+
+            with TestClient(create_app(path)) as client:
+                response = client.get('/rooms/1/status')
+                self.assertEqual(response.status_code, 200)
+                seat, empty = response.json()['seats']
+                self.assertEqual(seat['starts_at'], '2020-01-01T00:00:00Z')
+                self.assertEqual(seat['ends_at'], '2670-01-01T00:00:00Z')
+                self.assertEqual(seat['next_reservation']['starts_at'], seat['ends_at'])
+                self.assertEqual(seat['next_reservation']['ends_at'], '2670-01-01T01:00:00Z')
+                self.assertIsNone(empty['starts_at'])
+                self.assertIsNone(empty['ends_at'])
+                self.assertIsNone(empty['next_reservation'])
+
+    def test_http_unrepresentable_reservation_date(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'test.db'
+            initialize(path, demo=True)
+            with sqlite3.connect(path) as db:
+                # End at the first second after year 9999.
+                db.execute('INSERT INTO reservations(seat_id,def_time) VALUES(1,253402300800-unixepoch())')
+            with TestClient(create_app(path)) as client, self.assertLogs('api.main', level='ERROR'):
+                response = client.get('/rooms/1/status')
+            self.assertEqual(response.status_code, 503)
+            self.assertEqual(response.json()['error']['code'], 'STATUS_UNAVAILABLE')
+
     def test_thresholds_before_rounding_and_coverage(self):
         cases = [
             # occupied, empty, unknown, displayed percent, level, reason
