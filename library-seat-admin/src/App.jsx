@@ -16,7 +16,7 @@ import {
 
 import { adminRequest, defaultRoomDirectory, loadAdminData } from "./data/adminApi.js";
 
-const unavailable = "확인할 수 없음";
+const unavailable = "-";
 const loadingData = {
   loading: true, rooms: defaultRoomDirectory, roomsKnown: false, currentKnown: false,
   scheduledKnown: false, reservations: [], settings: null,
@@ -65,7 +65,7 @@ function Congestion({ seats, known = true, missing = unavailable }) {
         <strong>현재 혼잡도</strong>
         <span className="badge">
           {!known ? missing : s.rate === null
-            ? "확인 불가"
+            ? unavailable
             : s.rate < 50
               ? "여유"
               : s.rate < 80
@@ -75,11 +75,11 @@ function Congestion({ seats, known = true, missing = unavailable }) {
       </div>
       <div className="row">
         <span className="muted small">확인 좌석 기준 이용률</span>
-        <strong className="rate">{!known ? "—" : s.rate === null ? "—" : `${s.rate}%`}</strong>
+        <strong className="rate">{!known || s.rate === null ? unavailable : `${s.rate}%`}</strong>
       </div>
       <Bar value={s.rate} round />
       <p className="muted small">
-        {known ? `착석 ${s.occupied} / 확인 ${s.known}석 · 미확인 ${s.unknown}석` : `좌석 현황 · ${missing}`}
+        {known ? `착석 ${s.occupied} / 확인 ${s.known}석 · 미확인 ${s.unknown}석` : missing}
       </p>
     </div>
   );
@@ -97,9 +97,7 @@ function Home({ data, now, go }) {
           <img src="/assets/settings.svg" alt="" />
         </button>
       </div>
-      {!data.roomsKnown && <p className="muted small">
-        {data.loading ? "열람실 현황을 불러오는 중입니다." : "열람실 목록을 갱신할 수 없습니다."}
-      </p>}
+      {data.loading && <p className="muted small">열람실 현황을 불러오는 중입니다.</p>}
       {data.roomsKnown && !data.rooms.length && <p className="empty">등록된 열람실이 없습니다.</p>}
       {data.rooms.map((room) => {
         const seats = seatsFor(data, room.id, now),
@@ -157,7 +155,7 @@ function RoomPage({ data, room, seats, now, go }) {
               <small>
                 {room.seatsKnown && (data.currentKnown || index === 0 || index === 3) && items.length
                   ? `${items.map((s) => s.number).join(" · ")}번`
-                  : "—"}
+                  : unavailable}
                 {data.currentKnown && label === "예약 없이 착석" && items.length
                   ? " · 예약 없음/만료"
                   : ""}
@@ -181,7 +179,7 @@ function RoomPage({ data, room, seats, now, go }) {
             aria-pressed={filter === key}
             onPress={() => setFilter(key)}
           >
-            {label} {(key === "all" ? room.seatsKnown : countsKnown) ? count : "—"}
+            {label} {(key === "all" ? room.seatsKnown : countsKnown) ? count : unavailable}
           </Button>
         ))}
       </div>
@@ -207,15 +205,12 @@ function RoomPage({ data, room, seats, now, go }) {
                 </a>
               </div>
               <p className={`small ${s.attention ? "danger" : "muted"}`}>
-                {data.currentKnown ? s.status : `${s.unknown ? "착석 미확인" : s.occupied ? "착석" : "비착석"} · 예약 ${unavailable}`}
+                {data.currentKnown ? s.status : s.unknown ? unavailable : `${s.occupied ? "착석" : "비착석"} · 예약 ${unavailable}`}
               </p>
               {s.reservation && <Bar value={progress(s.reservation, now)} />}
             </article>
           ))}
-        {!room.seatsKnown || (filter !== "all" && !countsKnown) ? <div className="empty">
-          <p>좌석 목록 · {unavailable}</p>
-          {!room.seatsKnown && <a href={`#seat/${room.id}`}>좌석 상태 보기</a>}
-        </div> : !seats.some(
+        {!room.seatsKnown || (filter !== "all" && !countsKnown) ? <p className="empty" aria-label="좌석 목록">{unavailable}</p> : !seats.some(
           (s) =>
             filter === "all" ||
             (filter === "reserved" ? s.reservation : s.attention),
@@ -251,7 +246,7 @@ function SeatDetails({ data, room, seat, now, go, commit }) {
       <div className="seat-title">
         <h2>{seat.number}번 좌석</h2>
         <span className="badge">
-          ● {!data.currentKnown ? unavailable : r ? "예약 중" : seat.unknown ? "확인 불가" : "예약 없음"}
+          {data.currentKnown && (r || !seat.unknown) ? "● " : ""}{!data.currentKnown ? unavailable : r ? "예약 중" : seat.unknown ? unavailable : "예약 없음"}
         </span>
       </div>
       <p className="muted subtitle">
@@ -260,7 +255,7 @@ function SeatDetails({ data, room, seat, now, go, commit }) {
       <Card>
         <p className="muted subtitle">남은 예약 시간</p>
         <strong className="remaining">
-          {r ? `${remaining(r, now)}분` : "—"}
+          {r ? `${remaining(r, now)}분` : unavailable}
         </strong>
         {r ? (
           <>
@@ -274,7 +269,7 @@ function SeatDetails({ data, room, seat, now, go, commit }) {
           </>
         ) : (
           <>
-            <p className="muted small">{data.currentKnown ? "현재 진행 중인 예약이 없습니다." : `현재 예약 · ${unavailable}`}</p>
+            <p className="muted small">{data.currentKnown ? "현재 진행 중인 예약이 없습니다." : unavailable}</p>
             <Button onPress={() => go(`create/${room.id}/${seat.number}`)}>
               가상 예약 등록
             </Button>
@@ -289,10 +284,10 @@ function SeatDetails({ data, room, seat, now, go, commit }) {
         <h3>좌석 상태</h3>
         <Info label="최종 상태">{data.currentKnown ? seat.status : unavailable}</Info>
         <Info label="착석 상태">
-          {seat.unknown ? "확인 불가" : seat.occupied ? "착석 중" : "비착석"}
+          {seat.unknown ? unavailable : seat.occupied ? "착석 중" : "비착석"}
         </Info>
         <Info label="LED 상태">
-          {seat.unknown ? "확인 불가" : seat.occupied ? "소등" : "점등 (시연)"}
+          {seat.unknown ? unavailable : seat.occupied ? "소등" : "점등 (시연)"}
         </Info>
         <Info label="센서 상태">시연값 · 실제 센서 미연결</Info>
       </Card>
@@ -300,7 +295,7 @@ function SeatDetails({ data, room, seat, now, go, commit }) {
         <h3 className="device-title">장치의 마지막 적용 응답</h3>
         <Info label="수신 응답">없음 · 실제 장치 미연결</Info>
         <Info label="장치 통신">미연결</Info>
-        <Info label="최근 수신">—</Info>
+        <Info label="최근 수신">{unavailable}</Info>
       </Card>
       {r && (
         <Button variant="neutral" onPress={() => dialog.current.showModal()}>
@@ -361,7 +356,7 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
   if (edit && !original)
     return (
       <main>
-        <h2>{data.currentKnown ? "예약이 종료되었습니다." : `현재 예약 · ${unavailable}`}</h2>
+        <h2>{data.currentKnown ? "예약이 종료되었습니다." : unavailable}</h2>
         <p>좌석 상태를 확인하고 새 예약을 등록해주세요.</p>
         <Button onPress={back}>좌석으로 돌아가기</Button>
       </main>
@@ -494,7 +489,7 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
               총 예약 시간{" "}
               {Number.isFinite(endsAt - startsAt)
                 ? Math.max(0, Math.round((endsAt - startsAt) / MINUTE))
-                : "—"}
+                : unavailable}
               분 · 한국 표준시
             </p>
           )}
@@ -506,12 +501,12 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
               {remaining(original, now)}분 →{" "}
               {Number.isFinite(endsAt)
                 ? Math.max(0, Math.ceil((endsAt - now) / MINUTE))
-                : "—"}
+                : unavailable}
               분
             </Info>
             <Info label="종료일시">
               {dateTime(original.endsAt)} →{" "}
-              {Number.isFinite(endsAt) ? dateTime(endsAt) : "—"}
+              {Number.isFinite(endsAt) ? dateTime(endsAt) : unavailable}
             </Info>
             <Info label="다음 예약">
               {!data.scheduledKnown ? unavailable : next ? `${dateTime(next.startsAt)} 시작` : "없음"}
@@ -529,7 +524,7 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
             {error}
           </p>
         )}
-        {!canSubmit && <p role="status">좌석 또는 예약 정보 · {unavailable}</p>}
+        {!canSubmit && <p role="status" aria-label="좌석 또는 예약 정보">{unavailable}</p>}
         <div className="actions">
           <Button variant="neutral" onPress={back}>
             취소
@@ -721,7 +716,7 @@ export default function App() {
       )}
       {error && <p role="alert">{error}</p>}
       {invalidRoute ? (
-        <main><p>{data.loading ? "불러오는 중" : (!room ? !data.roomsKnown : !room.seatsKnown) ? `열람실 또는 좌석 정보 · ${unavailable}` : "해당 열람실 또는 좌석을 찾을 수 없습니다."}</p><Button onPress={() => go("home")}>홈으로</Button></main>
+        <main><p>{data.loading ? "불러오는 중" : (!room ? !data.roomsKnown : !room.seatsKnown) ? unavailable : "해당 열람실 또는 좌석을 찾을 수 없습니다."}</p><Button onPress={() => go("home")}>홈으로</Button></main>
       ) : page === "home" ? (
         <Home data={data} now={now} go={go} />
       ) : page === "rooms" ? (

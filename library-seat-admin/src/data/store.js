@@ -108,7 +108,7 @@ export function seatsFor(data, roomId, now) {
       unknown,
       attention: unknown || (occupied && !reservation),
       status: unknown
-        ? "상태 확인 불가"
+        ? "-"
         : `${reservation ? "예약 중" : expired ? "예약 만료" : "예약 없음"} · ${occupied ? "착석" : "비착석"}`,
     };
   });
