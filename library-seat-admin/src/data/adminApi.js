@@ -1,3 +1,11 @@
+// The room identities are defined in seed.sql. Live lists take precedence, including an empty list.
+export const defaultRoomDirectory = [
+  { id: '1', name: '제1열람실 (2F)' },
+  { id: '2', name: '제2열람실 (4F)' },
+  { id: '3', name: '노상일 HOLMZ (4F)' },
+  { id: '4', name: '집중열람실 (4F)' },
+].map((room) => ({ ...room, seats: [], seatsKnown: false }));
+
 export async function adminRequest(path, { token, method = 'GET', body, signal } = {}) {
   const headers = {};
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -73,7 +81,7 @@ export async function loadAdminData(token, signal) {
     room.seatsKnown = seats !== null && !(source && !floors && roomsByCode.get(source.code)?.length > 1);
   }
   return {
-    rooms: roomList,
+    rooms: rooms === null && !roomList.length ? defaultRoomDirectory : roomList,
     roomsKnown: rooms !== null,
     currentKnown: current !== null,
     scheduledKnown: scheduled !== null,

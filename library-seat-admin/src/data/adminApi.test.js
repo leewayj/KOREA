@@ -16,6 +16,8 @@ test('모든 API가 실패하면 빈 통계와 실제 0건을 구분한다', asy
   respond(t, {});
   const data = await loadAdminData();
   assert.equal(data.roomsKnown, false);
+  assert.deepEqual(data.rooms.map((room) => room.id), ["1", "2", "3", "4"]);
+  assert.ok(data.rooms.every((room) => !room.seatsKnown && !room.seats.length));
   assert.equal(data.currentKnown, false);
   assert.equal(data.scheduledKnown, false);
   assert.equal(data.settings, null);
@@ -39,4 +41,12 @@ test('좌석 조회가 실패해도 정상 응답한 설정과 열람실을 보�
   assert.equal(data.roomsKnown, true);
   assert.equal(data.rooms[0].seatsKnown, false);
   assert.deepEqual(data.settings, { duration: 60, maxExtensions: 2 });
+});
+
+
+test('서버가 빈 열람실 목록을 반환하면 기본 열람실을 표시하지 않는다', async (t) => {
+  respond(t, { '/rooms': [], '/seats': [] });
+  const data = await loadAdminData();
+  assert.equal(data.roomsKnown, true);
+  assert.deepEqual(data.rooms, []);
 });

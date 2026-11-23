@@ -14,11 +14,11 @@ import {
   validSettings,
 } from "./data/store.js";
 
-import { adminRequest, loadAdminData } from "./data/adminApi.js";
+import { adminRequest, defaultRoomDirectory, loadAdminData } from "./data/adminApi.js";
 
 const unavailable = "확인할 수 없음";
 const loadingData = {
-  loading: true, rooms: [], roomsKnown: false, currentKnown: false,
+  loading: true, rooms: defaultRoomDirectory, roomsKnown: false, currentKnown: false,
   scheduledKnown: false, reservations: [], settings: null,
 };
 const titles = {
@@ -97,14 +97,9 @@ function Home({ data, now, go }) {
           <img src="/assets/settings.svg" alt="" />
         </button>
       </div>
-      {!data.roomsKnown && <section className="room-home">
-        <p className="muted">열람실 목록 · {data.loading ? "불러오는 중" : unavailable}</p>
-        {!data.rooms.length && <Card className="room-card">
-          <Congestion seats={[]} known={false} missing={data.loading ? "불러오는 중" : unavailable} />
-          <div className="stats">{["관리 좌석", "예약 중", "확인 필요"].map((label) =>
-            <div key={label}><strong>—</strong><span>{label}</span></div>)}</div>
-        </Card>}
-      </section>}
+      {!data.roomsKnown && <p className="muted small">
+        {data.loading ? "열람실 현황을 불러오는 중입니다." : "열람실 목록을 갱신할 수 없습니다."}
+      </p>}
       {data.roomsKnown && !data.rooms.length && <p className="empty">등록된 열람실이 없습니다.</p>}
       {data.rooms.map((room) => {
         const seats = seatsFor(data, room.id, now),
@@ -117,7 +112,8 @@ function Home({ data, now, go }) {
               onClick={() => go(`rooms/${room.id}`)}
               aria-label={`${room.name} 예약 데이터 관리`}
             >
-              <Congestion seats={seats} known={room.seatsKnown} />
+              <div className="row"><strong>예약 데이터 관리</strong><span aria-hidden="true">›</span></div>
+              <Congestion seats={seats} known={room.seatsKnown} missing={data.loading ? "불러오는 중" : unavailable} />
               <div className="stats">
                 {[
                   [room.seatsKnown ? seats.length : unavailable, "관리 좌석"],
@@ -125,7 +121,7 @@ function Home({ data, now, go }) {
                   [room.seatsKnown && data.currentKnown ? s.attention : unavailable, "확인 필요"],
                 ].map(([value, label]) => (
                   <div key={label}>
-                    <strong>{value}</strong>
+                    <strong className={value === unavailable ? "unknown-value" : undefined}>{value}</strong>
                     <span>{label}</span>
                   </div>
                 ))}
@@ -216,7 +212,10 @@ function RoomPage({ data, room, seats, now, go }) {
               {s.reservation && <Bar value={progress(s.reservation, now)} />}
             </article>
           ))}
-        {!room.seatsKnown || (filter !== "all" && !countsKnown) ? <p className="empty">{unavailable}</p> : !seats.some(
+        {!room.seatsKnown || (filter !== "all" && !countsKnown) ? <div className="empty">
+          <p>좌석 목록 · {unavailable}</p>
+          {!room.seatsKnown && <a href={`#seat/${room.id}`}>좌석 상태 보기</a>}
+        </div> : !seats.some(
           (s) =>
             filter === "all" ||
             (filter === "reserved" ? s.reservation : s.attention),
@@ -226,6 +225,20 @@ function RoomPage({ data, room, seats, now, go }) {
   );
 }
 function SeatPage({ data, room, seat, now, go, commit }) {
+  if (!seat) return (
+    <main className="compact">
+      <h2>{room.name} · 좌석 상태</h2>
+      <Card><Info label="좌석 번호">{unavailable}</Info><Info label="남은 예약 시간">{unavailable}</Info></Card>
+      <Card><h3>좌석 상태</h3>{["최종 상태", "착석 상태", "LED 상태", "센서 상태"].map((label) =>
+        <Info key={label} label={label}>{unavailable}</Info>)}</Card>
+      <Card><h3>장치의 마지막 적용 응답</h3>{["수신 응답", "장치 통신", "최근 수신"].map((label) =>
+        <Info key={label} label={label}>{unavailable}</Info>)}</Card>
+      <Button variant="neutral" onPress={() => go(`rooms/${room.id}`)}>좌석 목록 보기</Button>
+    </main>
+  );
+  return <SeatDetails data={data} room={room} seat={seat} now={now} go={go} commit={commit} />;
+}
+function SeatDetails({ data, room, seat, now, go, commit }) {
   const dialog = useRef(null),
     r = seat.reservation;
   const next = data.reservations
@@ -687,7 +700,7 @@ export default function App() {
   }
 
   const invalidRoute = !["home", "settings"].includes(page) &&
-    (!room || (["seat", "edit"].includes(page) && !seat));
+    (!room || (!seat && (page === "edit" || (page === "seat" && room.seatsKnown && number))));
   const back = () =>
     go(
       page === "rooms" || page === "settings"
