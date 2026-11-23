@@ -3,14 +3,15 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "HX711.h"
+#include "secrets.h" // 로컬 설정 파일 불러오기 (GitHub 제외 대상)
 
 // ==================== [1. 설정 영역] ====================
-const char* ssid = "GalaxyS26+5201";       // 와이파이 이름 (모바일 핫스팟 2.4GHz)
-const char* password = "11111111";         // 와이파이 비밀번호
+// 실제 SSID, 비밀번호, 서버 URL은 src/secrets.h 에서 관리합니다.
+const char* ssid = WIFI_SSID;
+const char* password = WIFI_PASSWORD;
 
-// 백엔드 서버 주소 (프로덕션/시연용 서버 IP·포트 및 seat_id)
-const char* serverGetUrl = "http://10.44.160.72:8000/seats/1/reservation-info";
-const char* serverPostUrl = "http://10.44.160.72:8000/seats/1/occupancy";
+const char* serverGetUrl = SERVER_GET_URL;
+const char* serverPostUrl = SERVER_POST_URL;
 
 // 핀 설정
 const int LOADCELL_DOUT_PIN = 21;
@@ -42,7 +43,6 @@ LedMode currentLedMode = LED_OFF;
 // 서버 및 센서 상태 변수
 String serverSeatStatus = "UNKNOWN";
 String serverTargetLed = "OFF";
-bool isTargetLedInvalid = false; // target_led 누락 또는 예외 값 여부
 bool isOccupied = false;
 
 // 오류 및 초기화 추적 변수
@@ -179,16 +179,13 @@ void loop() {
                     // target_led 누락 및 허용되지 않은 값 검증
                     if (doc["target_led"].isNull() || !doc["target_led"].is<const char*>()) {
                         serverTargetLed = "OFF";
-                        isTargetLedInvalid = true;
                         Serial.println(">>> [경고] target_led 누락 또는 문자열 아님 -> 소등(OFF) 처리");
                     } else {
                         String rawLed = doc["target_led"].as<String>();
                         if (rawLed == "OFF" || rawLed == "BLUE_ON" || rawLed == "ORANGE_ON" || rawLed == "RED_BLINK") {
                             serverTargetLed = rawLed;
-                            isTargetLedInvalid = false;
                         } else {
                             serverTargetLed = "OFF";
-                            isTargetLedInvalid = true;
                             Serial.printf(">>> [경고] 허용되지 않은 target_led 값 수신(%s) -> 소등(OFF) 처리\n", rawLed.c_str());
                         }
                     }
