@@ -54,14 +54,16 @@ def edit(request: Request, reservation_id: Identifier, body: AdminReservationEdi
 
 
 @router.post('/reservations', response_model=Reservation, status_code=201, tags=[ADMIN_RESERVATION],
-             summary='관리자 가상 예약 생성', description='로그인이나 토큰 없이 호출합니다. `seat_id`, 등록된 사용자 `s_id`, `starts_at`, `ends_at`을 입력합니다. 시각은 UTC Unix 초 정수이며 과거·현재·미래 시각을 지정할 수 있습니다.\n\n시작 < 종료, 동일 좌석 CONFIRMED 예약의 시간 중복 및 사용자의 다중 활성 예약을 검사합니다. 앞 예약 종료와 다음 시작이 같으면 허용합니다. CONFIRMED로 생성하고 현재 설정의 기본 시간·연장 한도를 함께 저장합니다. 실제 이용시간은 입력한 종료−시작입니다. 성공은 201입니다.')
+             summary='관리자 가상 예약 생성', description='로그인이나 토큰 없이 호출합니다. `seat_id`, 숫자 10자리 학번 `s_id`, `starts_at`, `ends_at`을 입력합니다. 시각은 UTC Unix 초 정수이며 과거·현재·미래 시각을 지정할 수 있습니다.\n\n시작 < 종료, 동일 좌석 CONFIRMED 예약의 시간 중복 및 사용자의 다중 활성 예약을 검사합니다. 앞 예약 종료와 다음 시작이 같으면 허용합니다. CONFIRMED로 생성하고 현재 설정의 기본 시간·연장 한도를 함께 저장합니다. 실제 이용시간은 입력한 종료−시작입니다. 기존 학번의 사용자·프로필은 유지합니다. 미등록 학번은 이름=성명, 대학=단과대, 학과=학과로 자동 생성하고 예약에 연결합니다. 예약 실패 시 새 사용자·프로필도 함께 롤백합니다. 자동 생성한 학번도 일반 학번 로그인으로 접속할 수 있습니다. 성공은 201입니다.')
 def create_reservation(request: Request, response: Response, body: AdminReservationCreate):
     if body.starts_at >= body.ends_at:
         raise APIError(422,'INVALID_DURATION','시작 시각은 종료 시각보다 빨라야 합니다.')
     with connection(request.app.state.service.path,write=True) as db:
         require(db,'seats',body.seat_id)
         if db.execute('SELECT 1 FROM users WHERE s_id=?',(body.s_id,)).fetchone() is None:
-            raise APIError(404,'USER_NOT_REGISTERED','등록된 사용자를 지정하세요.')
+            db.execute('INSERT INTO users(s_id) VALUES(?)', (body.s_id,))
+            db.execute('INSERT INTO user_profiles(s_id,name,college,department) VALUES(?,?,?,?)',
+                       (body.s_id, '성명', '단과대', '학과'))
         db.execute('INSERT INTO reservation_admin_insert_context VALUES(1,?)',(context_actor(db),))
         cursor=db.execute('INSERT INTO reservations(seat_id,starts_at,def_time) VALUES(?,?,?)',
                           (body.seat_id,body.starts_at,body.ends_at-body.starts_at))
