@@ -11,7 +11,7 @@ router = APIRouter(tags=[SENSOR], responses={
 
 @router.post('/seats/{seat_id}/occupancy', response_model=Seat,
              summary='ESP32 착석 상태 수신·저장',
-             description='인증 없이 state(OCCUPIED·EMPTY·SENSOR_ERROR)를 받습니다. led_state는 선택이며 OFF·BLUE_ON·ORANGE_ON·RED_BLINK를 허용합니다. 생략 또는 null은 이전 회신을 유지합니다. 최초 미회신은 null입니다. 서버 수신시각과 LED 회신시각을 별도로 저장합니다. 기존 state만 보낸 요청도 허용합니다. 오류·10초 초과 단절은 연속 착석 증거를 해제합니다. 응답은 기존 좌석 필드와 seat_status이며 장치 상세는 관리자 API에서 조회합니다.')
+             description='인증 없이 state(OCCUPIED·EMPTY·SENSOR_ERROR)를 받습니다. led_state는 선택이며 OFF·BLUE_ON·ORANGE_ON·RED_BLINK를 허용합니다. 생략 또는 null은 이전 회신을 유지합니다. 최초 미회신은 null입니다. 서버 수신시각과 LED 회신시각을 별도로 저장합니다. 기존 state만 보낸 요청도 허용합니다. 정상 보고는 해당 좌석을 REAL로 저장하며 VIRTUAL에서 전환할 때 이전 가상 착석의 연속성은 초기화합니다. 가상 입력은 DB 또는 별도 가상 입력 경로에서 관리해야 합니다. 오류·10초 초과 단절은 연속 착석 증거를 해제합니다. 응답은 기존 좌석 필드와 seat_status이며 장치 상세는 관리자 API에서 조회합니다.')
 def update_occupancy(request: Request, response: Response, seat_id: Identifier, body: OccupancyUpdate):
     response.headers['Cache-Control'] = 'no-store'
     return request.app.state.service.update_occupancy(seat_id, body.state, body.led_state)
@@ -23,3 +23,4 @@ def update_occupancy(request: Request, response: Response, seat_id: Identifier, 
 def reservation_info(request: Request, response: Response, seat_id: Identifier):
     response.headers['Cache-Control'] = 'no-store'
     return request.app.state.service.device_reservation_info(seat_id)
+

@@ -51,7 +51,8 @@ def reconcile_devices(db, now):
 
 def record_report(db, seat_id, state, led_state, now):
     previous = db.execute('SELECT * FROM seat_device_reports WHERE seat_id=?', (seat_id,)).fetchone()
-    continuing = reliable(previous, now)
+    # A live report begins real-device continuity; simulated evidence cannot carry over.
+    continuing = bool(previous and previous['device_kind'] == 'REAL' and connected(previous, now))
     if not continuing or state != 'OCCUPIED':
         clear_tracking(db, seat_id)
     db.execute('''INSERT INTO seat_occupancy(seat_id,state,occupied_since,updated_at)
@@ -60,8 +61,8 @@ def record_report(db, seat_id, state, led_state, now):
             CASE WHEN seat_occupancy.state='OCCUPIED' AND ? THEN seat_occupancy.occupied_since
                  ELSE excluded.occupied_since END ELSE NULL END,updated_at=excluded.updated_at''',
         (seat_id, state, now if state == 'OCCUPIED' else None, now, continuing))
-    db.execute('''INSERT INTO seat_device_reports(seat_id,received_at,led_state,led_state_updated_at)
-        VALUES(?,?,?,?) ON CONFLICT(seat_id) DO UPDATE SET received_at=excluded.received_at,
+    db.execute('''INSERT INTO seat_device_reports(seat_id,device_kind,received_at,led_state,led_state_updated_at)
+        VALUES(?,'REAL',?,?,?) ON CONFLICT(seat_id) DO UPDATE SET device_kind='REAL',received_at=excluded.received_at,
         led_state=COALESCE(excluded.led_state,seat_device_reports.led_state),
         led_state_updated_at=COALESCE(excluded.led_state_updated_at,seat_device_reports.led_state_updated_at)''',
         (seat_id, now, led_state, now if led_state is not None else None))
