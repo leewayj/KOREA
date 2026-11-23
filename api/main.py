@@ -23,7 +23,7 @@ from .db import default_path, validate
 from .errors import APIError
 from .models import (EffectiveStatus, ErrorResponse, Floor, Identifier,
                      Reservation, ReservationCreate,
-                     ReservationMove, Room, Seat)
+                     ReservationMove, Room, RoomStatus, Seat)
 from .service import Service
 
 ID = Annotated[Identifier, PathParam()]
@@ -57,6 +57,19 @@ def floors(request: Request):
 @router.get('/rooms', response_model=list[Room], tags=[LOCATION], description='`floor_id`를 생략하면 전체 방, 지정하면 해당 층의 방을 반환합니다. 없는 층은 404입니다. 로그인 없이 조회합니다.', summary='전체 또는 특정 층의 방 목록 조회')
 def rooms(request: Request, floor_id: FilterID = None):
     return service(request).rooms(floor_id)
+
+
+@router.get('/rooms/{room_id}/status', response_model=RoomStatus, tags=[LOCATION],
+            summary='열람실 현재 혼잡도와 좌석 현황 조회',
+            description='로그인 없이 열람실 전체 좌석을 같은 시각 기준으로 조회합니다. '
+                        '혼잡도는 이용 중 / 확인 가능 좌석의 비율이며 30%부터 보통, 70%부터 혼잡입니다. '
+                        '확인 비율 80% 미만 또는 유효 좌석이 없으면 HTTP 200, INSUFFICIENT_DATA 및 '
+                        'level=null, percent=null을 반환합니다. 시각은 시간대가 포함된 ISO 8601입니다.',
+            responses={404: {'model': ErrorResponse, 'description': 'ROOM_NOT_FOUND'},
+                       503: {'model': ErrorResponse, 'description': 'STATUS_UNAVAILABLE'}})
+def room_status(request: Request, response: Response, room_id: ID):
+    response.headers['Cache-Control'] = 'no-store'
+    return service(request).room_status(room_id)
 
 
 @router.get('/seats', response_model=list[Seat], tags=[LOCATION], description='`floor_id`, `room_id`로 범위를 좁히고 `limit`·`offset`으로 나누어 조회합니다.\n\n기존 좌석별 위치·현재/다음 예약·남은 초·마지막 착석 상태를 유지하고 최종 seat_status를 추가합니다. 센서 오류·초기화·실제 장치 수신 10초 초과는 UNKNOWN입니다. LED·통신 상세는 관리자 전용 API에서 제공합니다. `reservation_state=AVAILABLE`은 현재 예약이 없다는 뜻이며 비착석을 보장하지 않습니다. 현재 예약이 없으면 `remaining_seconds=null`입니다. 로그인 없이 조회합니다.', summary='좌석 목록·현재 및 다음 예약 조회')
@@ -143,7 +156,7 @@ def create_app(database_path: Path | None = None) -> FastAPI:
             if worker.thread is not None:
                 worker.stop()
 
-    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.14.0', lifespan=lifespan, openapi_tags=OPENAPI_TAGS,
+    app = FastAPI(title='KOREA 예약정보 관리 API', version='1.15.0', lifespan=lifespan, openapi_tags=OPENAPI_TAGS,
                   description='여기자리 서비스 위한 API.')
     app.state.service = Service(path)
 
