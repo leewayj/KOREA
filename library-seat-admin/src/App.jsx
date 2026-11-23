@@ -584,10 +584,8 @@ function Settings({ data, commit }) {
   );
 }
 export default function App() {
-  const [token, setToken] = useState(() => sessionStorage.getItem("korea-admin-session")),
-    [data, setData] = useState(null),
+  const [data, setData] = useState(null),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false),
     pending = useRef(false),
     [route, setRoute] = useState(routeFromHash),
     [now, setNow] = useState(Date.now),
@@ -617,28 +615,20 @@ export default function App() {
     const t = setTimeout(() => setNotice(""), 4000);
     return () => clearTimeout(t);
   }, [notice]);
-  function clearSession() {
-    sessionStorage.removeItem("korea-admin-session");
-    setToken(null);
-    setData(null);
-    setError("");
-  }
   useEffect(() => {
-    if (!token) return;
     const controller = new AbortController();
     let loading = false;
     async function refresh() {
       if (loading || pending.current) return;
       loading = true;
       try {
-        const next = await loadAdminData(token, controller.signal);
+        const next = await loadAdminData(undefined, controller.signal);
         if (!controller.signal.aborted && !pending.current) {
           setData(next);
           setError("");
         }
       } catch (error) {
         if (controller.signal.aborted) return;
-        if (error.status === 401) clearSession();
         setError(error.message);
       } finally {
         loading = false;
@@ -650,40 +640,20 @@ export default function App() {
       controller.abort();
       clearInterval(timer);
     };
-  }, [token]);
-
-  async function login(event) {
-    event.preventDefault();
-    if (busy) return;
-    const fields = new FormData(event.currentTarget);
-    setBusy(true);
-    setError("");
-    try {
-      const result = await adminRequest("/admin/auth/login", {
-        method: "POST", body: { username: fields.get("username"), password: fields.get("password") },
-      });
-      sessionStorage.setItem("korea-admin-session", result.access_token);
-      setToken(result.access_token);
-    } catch (error) {
-      setError(error.message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  }, []);
 
   async function commit(path, options, message, showError = setError) {
     if (pending.current) return false;
     pending.current = true;
     try {
-      await adminRequest(path, { ...options, token });
+      await adminRequest(path, options);
     } catch (error) {
-      if (error.status === 401) clearSession();
       showError(error.message);
       pending.current = false;
       return false;
     }
     try {
-      setData(await loadAdminData(token));
+      setData(await loadAdminData());
       setNotice(message);
     } catch {
       setNotice(`${message} 목록을 다시 불러오는 중입니다.`);
@@ -693,21 +663,6 @@ export default function App() {
     return true;
   }
 
-  if (!token) return (
-    <div className="app-shell">
-      <main className="compact">
-        <h1>관리자 로그인</h1>
-        <form onSubmit={login}>
-          <Card>
-            <label>관리자 ID <input name="username" autoComplete="username" required /></label>
-            <label>비밀번호 <input name="password" type="password" autoComplete="current-password" required /></label>
-          </Card>
-          {error && <p role="alert">{error}</p>}
-          <Button type="submit" isDisabled={busy}>로그인</Button>
-        </form>
-      </main>
-    </div>
-  );
   if (!data) return <main className="compact"><p role="status">{error || "예약 정보를 불러오는 중입니다."}</p></main>;
   const invalidRoute = !["home", "settings"].includes(page) &&
     (!room || (["seat", "edit"].includes(page) && !seat));
@@ -729,13 +684,6 @@ export default function App() {
           <h1>{titles[page]}</h1>
         </header>
       )}
-      <Button variant="neutral" onPress={async () => {
-        try {
-          await adminRequest("/admin/auth/logout", { method: "POST", token });
-        } finally {
-          clearSession();
-        }
-      }}>로그아웃</Button>
       {error && <p role="alert">{error}</p>}
       {invalidRoute ? (
         <main><p>해당 열람실 또는 좌석을 찾을 수 없습니다.</p><Button onPress={() => go("home")}>홈으로</Button></main>
