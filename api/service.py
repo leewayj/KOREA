@@ -1,7 +1,11 @@
+import sqlite3
+from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
 
 from .db import connection
 from .errors import APIError
+from .models import Congestion, SeatCounts
 from .timing import project, EFFECTIVE_SQL
 
 
@@ -73,6 +77,40 @@ def seat_rows(db, now, floor_id=None, room_id=None, seat_id=None, limit=100, off
     return result
 
 
+def room_summary(seats, calculated_at):
+    statuses = Counter(seat['seat_status'] for seat in seats)
+    total = len(seats)
+    unknown = statuses['UNKNOWN']
+    valid = total - unknown
+    available = statuses['AVAILABLE']
+    reserved_empty = statuses['RESERVED_EMPTY']
+    occupied = valid - available - reserved_empty
+    counts = SeatCounts(total=total, valid=valid, occupied=occupied, available=available,
+                        reservedEmpty=reserved_empty, unknown=unknown)
+
+    if total == 0:
+        reason = 'NO_SEATS'
+    elif valid == 0:
+        reason = 'NO_VALID_SEATS'
+    elif valid * 100 < total * 80:
+        reason = 'LOW_COVERAGE'
+    else:
+        # Apply thresholds to the exact fraction, then round for display.
+        scaled = occupied * 100
+        if scaled < valid * 30:
+            level = 'LOW'
+        elif scaled < valid * 70:
+            level = 'MODERATE'
+        else:
+            level = 'HIGH'
+        percent = (2 * scaled + valid) // (2 * valid)
+        return counts, Congestion(status='OK', reason=None, level=level, percent=percent,
+                                  calculatedAt=calculated_at)
+
+    return counts, Congestion(status='INSUFFICIENT_DATA', reason=reason, level=None,
+                              percent=None, calculatedAt=calculated_at)
+
+
 class Service:
     def __init__(self, path: Path):
         self.path = path
@@ -87,6 +125,28 @@ class Service:
                 require(db, 'floors', floor_id)
             return [dict(r) for r in db.execute(
                 'SELECT * FROM rooms WHERE (? IS NULL OR floor_id = ?) ORDER BY floor_id, id', (floor_id, floor_id))]
+
+    def room_status(self, room_id):
+        try:
+            with connection(self.path) as db:
+                room = db.execute('SELECT id, name FROM rooms WHERE id=?', (room_id,)).fetchone()
+                if room is None:
+                    raise APIError(404, 'ROOM_NOT_FOUND', '열람실을 찾을 수 없습니다.')
+                now = db.execute('SELECT unixepoch()').fetchone()[0]
+                # SQLite LIMIT -1 reads every seat rather than one page.
+                seats = seat_rows(db, now, room_id=room_id, limit=-1)
+                simulated = db.execute("""SELECT EXISTS(
+                    SELECT 1 FROM seats s JOIN seat_device_reports d ON d.seat_id=s.id
+                    WHERE s.room_id=? AND d.device_kind='VIRTUAL')""", (room_id,)).fetchone()[0]
+        except APIError as error:
+            if isinstance(error.__cause__, sqlite3.Error):
+                raise APIError(503, 'STATUS_UNAVAILABLE', '열람실 현황을 조회할 수 없습니다.') from error
+            raise
+
+        calculated_at = datetime.fromtimestamp(now, UTC)
+        counts, congestion = room_summary(seats, calculated_at)
+        return {'room': dict(room), 'serverTime': calculated_at, 'seatCounts': counts,
+                'congestion': congestion, 'hasSimulatedData': bool(simulated), 'seats': seats}
 
     def seats(self, floor_id=None, room_id=None, limit=100, offset=0):
         with connection(self.path) as db:

@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints
 
 PositiveInteger = Annotated[int, Field(strict=True, gt=0, le=9223372036854775807)]
 Identifier = Annotated[int, Field(gt=0, le=9223372036854775807)]
@@ -209,6 +209,57 @@ class Seat(BaseModel):
     next_reservation: NextReservation | None
     notice_code: NoticeCode | None
     notice_message: str | None
+
+
+class RoomIdentity(BaseModel):
+    id: int
+    name: str
+
+
+class SeatCounts(BaseModel):
+    total: int
+    valid: int
+    occupied: int
+    available: int
+    reservedEmpty: int
+    unknown: int
+
+
+class Congestion(BaseModel):
+    status: Literal['OK', 'INSUFFICIENT_DATA']
+    reason: Literal['NO_SEATS', 'NO_VALID_SEATS', 'LOW_COVERAGE'] | None
+    level: Literal['LOW', 'MODERATE', 'HIGH'] | None
+    percent: Annotated[int, Field(ge=0, le=100)] | None
+    calculatedAt: AwareDatetime
+
+
+class RoomNextReservation(BaseModel):
+    id: int
+    starts_at: AwareDatetime
+    ends_at: AwareDatetime
+
+
+class RoomStatusSeat(BaseModel):
+    seat_id: int
+    seat_number: str
+    seat_status: FinalSeatStatus
+    reservation_state: Literal['AVAILABLE', 'RESERVED']
+    active_reservation_id: int | None
+    starts_at: AwareDatetime | None
+    ends_at: AwareDatetime | None
+    remaining_seconds: int | None
+    next_reservation: RoomNextReservation | None
+    notice_code: NoticeCode | None
+    notice_message: str | None
+
+
+class RoomStatus(BaseModel):
+    room: RoomIdentity
+    serverTime: AwareDatetime
+    congestion: Congestion
+    seatCounts: SeatCounts
+    hasSimulatedData: bool
+    seats: list[RoomStatusSeat]
 
 
 class AdminSeat(Seat):
