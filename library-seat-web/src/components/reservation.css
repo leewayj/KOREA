@@ -17,10 +17,10 @@
 .reservation-clock small { font-size: 7.857px; line-height: 1.4; }
 .reservation-time-details { border-top: 1px solid var(--divider); padding-top: 9px; }
 .reservation-time-details h3 { margin: 0 0 8px; font-size: 16px; line-height: 24px; }
-.reservation-time-details dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 0; }
+.reservation-time-details dl { display: grid; grid-template-columns: repeat(3, minmax(max-content, 1fr)); gap: 10px; margin: 0; }
 .reservation-time-details dt { margin: 0 0 3px; font-size: 12px; line-height: 17px; white-space: nowrap; }
 .reservation-time-details dd { margin: 0; font-size: 20px; font-weight: 700; line-height: 28px; color: var(--blue-deep); }
-.reservation-time-details dl > div:last-child dd { color: #18324b; }
+.reservation-time-details dl > div:last-child dd { color: #18324b; white-space: nowrap; }
 .reservation-actions { display: flex; flex-direction: column; gap: 12px; margin-top: auto; padding: 24px 24px 16px; }
 .reservation-actions > div { display: flex; gap: 12px; }
 .reservation-actions .button { flex: 1; min-width: 0; min-height: 52px; font-size: 15px; font-weight: 700; }
