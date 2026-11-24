@@ -1,12 +1,12 @@
 #include <Arduino.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "HX711.h"
-#include "secrets.h" // 로컬 설정 파일 불러오기 (GitHub 제외 대상)
+#include "secrets.h"
 
 // ==================== [1. 설정 영역] ====================
-// 실제 SSID, 비밀번호, 서버 URL은 src/secrets.h 에서 관리합니다.
 const char* ssid = WIFI_SSID;
 const char* password = WIFI_PASSWORD;
 
@@ -22,13 +22,27 @@ const int BLUE_PIN = 27;
 
 HX711 scale;
 
-// 착석·비착석 임계값 (경계값 반복 전환 방지용 히스테리시스)
+// 착석·비착석 임계값 (히스테리시스)
 const long OCCUPIED_THRESHOLD = 200000; // 2kg 이상 -> 착석 판정
-const long EMPTY_THRESHOLD = 150000;    // 이 값 이하 -> 비착석 판정
+const long EMPTY_THRESHOLD = 150000;    // 1.5kg 이하 -> 비착석 후보
+
+// 앉은 채 의자를 들었다 놓는 동작 방어 (이석 유예 시간)
+const unsigned long LEAVE_DEBOUNCE_MS = 3000; // 3초 이상 무게가 빠져야 실제 이석 인정
+
+// 의자 넘어짐(전도) 및 비정상 하중 감지 기준
+const long TILT_NEGATIVE_LIMIT = -120000;     // 이보다 큰 음수가 지속되면 의자 넘어짐/뒤틀림 판정
+const long OVERLOAD_LIMIT = 2000000;          // 비정상 과하중 한계
+const unsigned long ABNORMAL_HOLD_MS = 3000;  // 3초 이상 비정상 값 지속 시 전도/이상 판정
+
+// 자동 영점(Auto-Tare) 설정 (정상적으로 바로 선 빈 의자일 때만 작동)
+const long AUTO_TARE_MAX_OFFSET = 100000;     // 빈 의자 미세 오차 허용 상한
+const long AUTO_TARE_MIN_DRIFT = 5000;        // 5,000 이상 틀어졌을 때만 재보정
+const long STABILITY_TOLERANCE = 4000;        // 흔들림 허용 오차
+const unsigned long AUTO_TARE_WAIT_MS = 4000; // 안정 상태 4초 유지 시 자동 영점
 
 // 통신/센서 오류 판단 기준
-const unsigned long SERVER_TIMEOUT_MS = 10000; // 10초 초과 시 통신 오류
-const unsigned long SENSOR_TIMEOUT_MS = 3000;  // 3초 초과 시 센서 오류
+const unsigned long SERVER_TIMEOUT_MS = 15000;
+const unsigned long SENSOR_TIMEOUT_MS = 3000;
 
 // LED 출력 모드 정의
 enum LedMode {
@@ -50,10 +64,22 @@ bool hasServerSynced = false;
 bool hasValidSensor = false;
 bool isServerError = false;
 bool isSensorError = false;
+bool isChairFallen = false; // 의자 넘어짐 상태 플래그
 unsigned long lastServerOkMillis = 0;
 unsigned long lastSensorOkMillis = 0;
 
-// 타이머 변수
+// 필터 및 추적 타이머 변수
+unsigned long leaveCandidateStartMillis = 0;
+bool isLeavePending = false;
+
+unsigned long abnormalStartMillis = 0;
+bool isAbnormalPending = false;
+
+long prevReading = 0;
+unsigned long stableStartMillis = 0;
+bool isTrackingStability = false;
+
+// 주기 타이머 변수
 unsigned long previousBlinkMillis = 0;
 unsigned long previousServerMillis = 0;
 unsigned long previousSensorMillis = 0;
@@ -70,15 +96,15 @@ void setColor(int r, int g, int b) {
 void updateLED() {
     switch (currentLedMode) {
         case LED_OFF:
-            setColor(0, 0, 0);       // 소등
+            setColor(0, 0, 0);
             break;
         case LED_BLUE_ON:
-            setColor(0, 0, 255);     // 파란색 점등
+            setColor(0, 0, 255);
             break;
         case LED_ORANGE_ON:
-            setColor(255, 80, 0);    // 주황색 점등
+            setColor(255, 80, 0);
             break;
-        case LED_RED_BLINK:          // 빨간색 점멸 (0.5초 주기)
+        case LED_RED_BLINK:
             if (millis() - previousBlinkMillis >= 500) {
                 previousBlinkMillis = millis();
                 blinkState = !blinkState;
@@ -106,11 +132,9 @@ void setup() {
     pinMode(BLUE_PIN, OUTPUT);
     setColor(0, 0, 0);
 
-    // 로드셀 초기화
     scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
     scale.tare();
 
-    // Wi-Fi 연결 시작 (핫스팟이 나중에 켜져도 5초 주기로 재시도하여 자동 연결)
     Serial.println();
     Serial.print("WiFi 연결 중: ");
     Serial.println(ssid);
@@ -139,7 +163,7 @@ void setup() {
 }
 
 void loop() {
-    // 0. Wi-Fi 연결 끊김 감지 및 자동 재연결 (5초 주기 체크)
+    // 0. Wi-Fi 재연결 감시
     if (WiFi.status() != WL_CONNECTED) {
         if (millis() - previousWifiCheckMillis >= 5000) {
             previousWifiCheckMillis = millis();
@@ -149,23 +173,28 @@ void loop() {
         }
     }
 
-    // 1. 키보드 입력 처리 ('t' 누르면 영점 조절)
+    // 1. 수동 영점 조절 ('t')
     if (Serial.available() > 0) {
         char cmd = Serial.read();
         if (cmd == 't') {
             scale.tare();
-            Serial.println(">>> [영점 완료] 무게가 0으로 초기화되었습니다.");
+            isTrackingStability = false;
+            isChairFallen = false;
+            Serial.println(">>> [수동 영점 완료] 무게가 0으로 초기화되었습니다.");
         }
     }
 
-    // 2. [서버에서 상태 및 목표 LED 받아오기] 2초마다 실행 (GET)
+    // 2. [서버 상태 조회] 2초마다 실행 (GET)
     if (millis() - previousServerMillis >= 2000) {
         previousServerMillis = millis();
 
         if (WiFi.status() == WL_CONNECTED) {
+            WiFiClientSecure client;
+            client.setInsecure();
+
             HTTPClient http;
-            http.setTimeout(1500);
-            http.begin(serverGetUrl);
+            http.setTimeout(10000);
+            http.begin(client, serverGetUrl);
             int httpResponseCode = http.GET();
 
             if (httpResponseCode == 200) {
@@ -176,25 +205,20 @@ void loop() {
                 if (!error) {
                     serverSeatStatus = doc["seat_status"] | "UNKNOWN";
 
-                    // target_led 누락 및 허용되지 않은 값 검증
                     if (doc["target_led"].isNull() || !doc["target_led"].is<const char*>()) {
                         serverTargetLed = "OFF";
-                        Serial.println(">>> [경고] target_led 누락 또는 문자열 아님 -> 소등(OFF) 처리");
                     } else {
                         String rawLed = doc["target_led"].as<String>();
                         if (rawLed == "OFF" || rawLed == "BLUE_ON" || rawLed == "ORANGE_ON" || rawLed == "RED_BLINK") {
                             serverTargetLed = rawLed;
                         } else {
                             serverTargetLed = "OFF";
-                            Serial.printf(">>> [경고] 허용되지 않은 target_led 값 수신(%s) -> 소등(OFF) 처리\n", rawLed.c_str());
                         }
                     }
 
                     hasServerSynced = true;
                     isServerError = false;
                     lastServerOkMillis = millis();
-                } else {
-                    Serial.println(">>> JSON 해석 오류");
                 }
             } else {
                 Serial.printf(">>> 서버 GET 에러 코드: HTTP %d\n", httpResponseCode);
@@ -202,13 +226,12 @@ void loop() {
             http.end();
         }
 
-        // 서버 응답이 10초 이상 없으면 통신 중단 오류 판정
         if (millis() - lastServerOkMillis > SERVER_TIMEOUT_MS) {
             isServerError = true;
         }
     }
 
-    // 3. [무게 측정 + LED 적용 + 서버로 결과 회신] 1초마다 실행 (POST)
+    // 3. [무게 측정 + 들썩임 필터 + 의자 넘어짐 감지 + 자동 영점] 1초마다 실행 (POST)
     if (millis() - previousSensorMillis >= 1000) {
         previousSensorMillis = millis();
         long reading = 0;
@@ -219,24 +242,82 @@ void loop() {
             isSensorError = false;
             lastSensorOkMillis = millis();
 
-            if (reading >= OCCUPIED_THRESHOLD) {
-                isOccupied = true;
-            } else if (reading <= EMPTY_THRESHOLD) {
-                isOccupied = false;
+            // [A] 의자 넘어짐(전도) 및 비정상 극단값 감시
+            if (reading < TILT_NEGATIVE_LIMIT || reading > OVERLOAD_LIMIT) {
+                if (!isAbnormalPending) {
+                    isAbnormalPending = true;
+                    abnormalStartMillis = millis();
+                } else if (millis() - abnormalStartMillis >= ABNORMAL_HOLD_MS) {
+                    if (!isChairFallen) {
+                        Serial.println(">>> [경고] 의자 넘어짐 또는 비정상 하중 감지! (자동 영점 중단)");
+                    }
+                    isChairFallen = true;
+                    isOccupied = false;
+                    isLeavePending = false;
+                }
+            } else {
+                isAbnormalPending = false;
+                if (isChairFallen) {
+                    Serial.println(">>> [복구] 의자가 정상 위치로 복구되었습니다.");
+                }
+                isChairFallen = false;
             }
+
+            // [B] 정상 상태일 때 착석 판정 (앉은 채 의자 들썩임 방어 포함)
+            if (!isChairFallen) {
+                if (reading >= OCCUPIED_THRESHOLD) {
+                    isOccupied = true;
+                    isLeavePending = false; // 다시 하중이 실리면 이석 유예 취소
+                } else if (reading <= EMPTY_THRESHOLD) {
+                    if (isOccupied) {
+                        // 이미 착석 중이었다면 3초간 하중 감소가 유지되는지 대기
+                        if (!isLeavePending) {
+                            isLeavePending = true;
+                            leaveCandidateStartMillis = millis();
+                        } else if (millis() - leaveCandidateStartMillis >= LEAVE_DEBOUNCE_MS) {
+                            isOccupied = false;
+                            isLeavePending = false;
+                        }
+                    } else {
+                        isOccupied = false;
+                        isLeavePending = false;
+                    }
+                }
+            }
+
+            // [C] 자동 영점(Auto-Tare): 넘어지지 않았고, 비착석이며, 미세 오차 범위 내 안정화 시 실행
+            if (!isChairFallen && !isOccupied && !isLeavePending &&
+                abs(reading) < AUTO_TARE_MAX_OFFSET && abs(reading) > AUTO_TARE_MIN_DRIFT) {
+                if (abs(reading - prevReading) < STABILITY_TOLERANCE) {
+                    if (!isTrackingStability) {
+                        isTrackingStability = true;
+                        stableStartMillis = millis();
+                    } else if (millis() - stableStartMillis >= AUTO_TARE_WAIT_MS) {
+                        scale.tare();
+                        reading = 0;
+                        isTrackingStability = false;
+                        Serial.println(">>> [자동 영점 완료] 빈 의자 위치 변화 안정화 -> 0점 재보정!");
+                    }
+                } else {
+                    isTrackingStability = false;
+                }
+            } else {
+                isTrackingStability = false;
+            }
+            prevReading = reading;
+
         } else {
             if (millis() - lastSensorOkMillis > SENSOR_TIMEOUT_MS) {
                 isSensorError = true;
             }
         }
 
-        // ==================== [최종 LED 결정 (서버 target_led 기준)] ====================
+        // [D] 최종 LED 결정 (센서 오류 또는 의자 넘어짐 시 안전 소등)
         String displayStatus = serverSeatStatus;
 
-        if (!hasServerSynced || isServerError || !hasValidSensor || isSensorError) {
-            // 초기화 중, 센서 오류(3초 초과), 또는 서버 응답 단절(10초 초과) -> 소등
+        if (!hasServerSynced || isServerError || !hasValidSensor || isSensorError || isChairFallen) {
             currentLedMode = LED_OFF;
-            displayStatus = "UNKNOWN";
+            displayStatus = isChairFallen ? "CHAIR_FALLEN" : "UNKNOWN";
         }
         else if (serverTargetLed == "BLUE_ON") {
             currentLedMode = LED_BLUE_ON;
@@ -248,21 +329,24 @@ void loop() {
             currentLedMode = LED_RED_BLINK;
         }
         else {
-            // 정상 "OFF" 또는 예외 소등 상태
             currentLedMode = LED_OFF;
         }
-        // ================================================================================
 
         updateLED();
 
-        // 초기화 중 센서 상태를 아직 확인하지 못했다면 POST 전송 건너뛰기
+        // [E] 서버로 센서/LED 상태 회신 (의자 넘어짐 시 SENSOR_ERROR로 보고)
         if (WiFi.status() == WL_CONNECTED && (hasValidSensor || isSensorError)) {
+            WiFiClientSecure client;
+            client.setInsecure();
+
             HTTPClient http;
-            http.setTimeout(1500);
-            http.begin(serverPostUrl);
+            http.setTimeout(10000);
+            http.begin(client, serverPostUrl);
             http.addHeader("Content-Type", "application/json");
 
-            String sensorStateStr = isSensorError ? "SENSOR_ERROR" : (isOccupied ? "OCCUPIED" : "EMPTY");
+            String sensorStateStr = (isSensorError || isChairFallen)
+                ? "SENSOR_ERROR"
+                : (isOccupied ? "OCCUPIED" : "EMPTY");
 
             JsonDocument postDoc;
             postDoc["state"] = sensorStateStr;
@@ -282,7 +366,7 @@ void loop() {
         Serial.print("무게: ");
         Serial.print(reading);
         Serial.print(" | 착석: ");
-        Serial.print(isOccupied ? "OCCUPIED" : "EMPTY");
+        Serial.print(isChairFallen ? "FALLEN(전도)" : (isOccupied ? "OCCUPIED" : "EMPTY"));
         Serial.print(" | 서버상태: ");
         Serial.print(displayStatus);
         Serial.print(" | 적용LED: ");
