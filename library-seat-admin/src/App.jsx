@@ -406,13 +406,19 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
     if (saved) go(`seat/${room.id}/${number}`);
   }
   return (
-    <main className={edit ? "compact" : ""}>
+    <main className={edit ? "compact" : "create-reservation"}>
       <form onSubmit={submit}>
-        <h2>{edit ? `${seat.number}번 좌석` : "예약 정보 입력"}</h2>
-        <p className="muted subtitle">
-          {room.name}
-          {edit ? " · 한국 표준시" : ""}
-        </p>
+        {edit ? (
+          <>
+            <h2>{seat.number}번 좌석</h2>
+            <p className="muted subtitle">{room.name} · 한국 표준시</p>
+          </>
+        ) : (
+          <div className="create-reservation-intro">
+            <h2>예약 정보 입력</h2>
+            <p className="muted subtitle">{room.name}</p>
+          </div>
+        )}
         {edit ? (
           <Card>
             <p className="muted subtitle">현재 남은 시간</p>
@@ -423,15 +429,16 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
           </Card>
         ) : (
           <Card>
-            <label>좌석 번호
-              <select value={number} onChange={(e) => setNumber(e.target.value)} required>
+            <div className="field">
+              <label htmlFor="create-reservation-seat">좌석 번호</label>
+              <select id="create-reservation-seat" value={number} onChange={(e) => setNumber(e.target.value)} required>
                 {room.seats.map((item) => (
-                  <option key={item.seat_id} value={item.seat_number}>{item.seat_number}번</option>
+                  <option key={item.seat_id} value={item.seat_number}>{item.seat_number}</option>
                 ))}
               </select>
-            </label>
-            <InputField label="등록된 학번" value={studentId} onChange={(e) => setStudentId(e.target.value)} />
-
+            </div>
+            <InputField label="학번" value={studentId} onChange={(e) => setStudentId(e.target.value)} />
+            <p className="muted small">현재 열람실의 좌석 번호 및 학번을 입력하세요.</p>
           </Card>
         )}
         <Card>
@@ -497,7 +504,7 @@ function BookingForm({ data, room, seat, edit, now, go, commit }) {
               {Number.isFinite(endsAt - startsAt)
                 ? Math.max(0, Math.round((endsAt - startsAt) / MINUTE))
                 : unavailable}
-              분 · 한국 표준시
+              분
             </p>
           )}
         </Card>
@@ -712,7 +719,7 @@ export default function App() {
           : `rooms/${roomId}`,
     );
   return (
-    <div className="app-shell">
+    <div className={page === "create" ? "app-shell create-reservation-shell" : "app-shell"}>
       {page !== "home" && (
         <header>
           <button className="icon back" aria-label="뒤로 가기" onClick={back}>

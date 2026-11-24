@@ -370,7 +370,8 @@ form {
   font-size: 16px;
   color: #1e1e1e;
 }
-.field input {
+.field input,
+.create-reservation .field select {
   width: 100%;
   min-width: 0;
   height: 46px;
@@ -390,6 +391,35 @@ form {
   display: grid;
   grid-template-columns: 1fr 2fr;
   gap: 12px;
+}
+.create-reservation-shell {
+  border-block: 1px solid var(--line);
+}
+.create-reservation-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.create-reservation .field select {
+  font-family: inherit;
+}
+.create-reservation .field input[type="datetime-local"] {
+  font-size: 16px;
+  padding-inline: 15px;
+}
+.create-reservation .actions {
+  grid-template-columns: 108fr 222fr;
+}
+.create-reservation .actions .button {
+  min-height: 46px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-weight: 400;
+}
+.create-reservation .actions .button-variant-neutral {
+  border: 1px solid #767676;
+  background: #e3e3e3;
+  color: #1e1e1e;
 }
 .quick {
   display: flex;
