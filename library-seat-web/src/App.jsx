@@ -289,13 +289,7 @@ function App({ accountControl }) {
             </button>
           )}
           <h1>{pageTitle}</h1>
-          {endingSoon ? (
-            <details className="reservation-navigation-menu">
-              <summary aria-label="예약 메뉴"><Icon name="v02-menu" /></summary>
-              <button type="button" onClick={() => navigate('home')}>홈으로</button>
-              <button type="button" onClick={() => navigate('rooms')}>열람실 좌석 현황</button>
-            </details>
-          ) : <span className="navigation-spacer" aria-hidden="true" />}
+          <span className="navigation-spacer" aria-hidden="true" />
         </div>
       </header>
 
