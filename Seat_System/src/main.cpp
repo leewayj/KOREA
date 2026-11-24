@@ -34,10 +34,10 @@ const long TILT_NEGATIVE_LIMIT = -120000;     // 이보다 큰 음수가 지속�
 const long OVERLOAD_LIMIT = 2000000;          // 비정상 과하중 한계
 const unsigned long ABNORMAL_HOLD_MS = 3000;  // 3초 이상 비정상 값 지속 시 전도/이상 판정
 
-// 자동 영점(Auto-Tare) 설정 (정상적으로 바로 선 빈 의자일 때만 작동)
-const long AUTO_TARE_MAX_OFFSET = 100000;     // 빈 의자 미세 오차 허용 상한
-const long AUTO_TARE_MIN_DRIFT = 5000;        // 5,000 이상 틀어졌을 때만 재보정
-const long STABILITY_TOLERANCE = 4000;        // 흔들림 허용 오차
+// 자동 영점(Auto-Tare) 설정 (실측 노이즈 -7,300 ~ +33,000 반영)
+const long AUTO_TARE_MAX_OFFSET = 130000;     // 빈 의자 위치 변화 오차 허용 상한
+const long AUTO_TARE_MIN_DRIFT = 45000;       // ±45,000 이상 영점이 틀어졌을 때만 재보정 (평소 노이즈 무시)
+const long STABILITY_TOLERANCE = 15000;       // 센서 기본 노이즈 출렁임을 감안한 안정 허용 오차
 const unsigned long AUTO_TARE_WAIT_MS = 4000; // 안정 상태 4초 유지 시 자동 영점
 
 // 통신/센서 오류 판단 기준
