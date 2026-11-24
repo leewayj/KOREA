@@ -158,14 +158,9 @@ function RoomPage({ data, room, seats, now, go }) {
             <div key={label}>
               <span>{label}</span>
               <strong>{room.seatsKnown && (data.currentKnown || index === 0 || index === 3) ? `${items.length}석` : unavailable}</strong>
-              <small>
-                {room.seatsKnown && (data.currentKnown || index === 0 || index === 3) && items.length
-                  ? `${items.map((s) => s.number).join(" · ")}번`
-                  : unavailable}
-                {data.currentKnown && label === "예약 없이 착석" && items.length
-                  ? " · 예약 없음/만료"
-                  : ""}
-              </small>
+              {room.seatsKnown && data.currentKnown && label === "예약 없이 착석" && items.length > 0 && (
+                <small>예약 없음/만료</small>
+              )}
             </div>
           ))}
         </div>
