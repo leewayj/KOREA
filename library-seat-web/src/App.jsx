@@ -62,6 +62,7 @@ function App({ accountControl }) {
   const [loading, setLoading] = useState(apiMode)
   const [loadError, setLoadError] = useState('')
   const [loadVersion, setLoadVersion] = useState(0)
+  const reservationReads = useRef(null)
   const savingReservation = useRef(false)
   const [saving, setSaving] = useState(false)
   const rooms = apiMode ? previewRooms.map((room) => {
@@ -103,9 +104,12 @@ function App({ accountControl }) {
     if (!apiMode) return
     const controller = new AbortController()
 
-    async function load() {
-      setLoading(true)
-      setLoadError('')
+    reservationReads.current = controller
+    const poll = { inFlight: false, hasSnapshot: false }
+
+    async function sync() {
+      if (poll.inFlight || controller.signal.aborted || savingReservation.current) return
+      poll.inFlight = true
       try {
         const [seats, saved] = await Promise.all([
           fetchSeats(controller.signal),
@@ -114,61 +118,34 @@ function App({ accountControl }) {
         const seat = saved && (seats.find((item) => item.seat_id === saved.seat_id)
           ?? await fetchSeat(saved.seat_id, controller.signal))
         if (controller.signal.aborted) return
-        if (seat && !roomIdsByCode[seat.room_code]) throw new Error('Unknown reservation room')
+        if (saved && !roomIdsByCode[seat?.room_code]) throw new Error('Unknown reservation room')
+        poll.hasSnapshot = true
         setApiSeats(seats)
         setReservation(saved ? toWebReservation(saved, seat) : null)
+        setLoadError('')
       } catch (error) {
-        if (!controller.signal.aborted) setLoadError(error.message || '예약 서버에 연결할 수 없어요.')
+        if (!controller.signal.aborted && !poll.hasSnapshot) {
+          setLoadError(error.message || '예약 서버에 연결할 수 없어요.')
+        }
       } finally {
+        poll.inFlight = false
         if (!controller.signal.aborted) setLoading(false)
       }
     }
 
-    load()
-    return () => controller.abort()
-  }, [loadVersion])
-
-  // Keep reservation details in sync with administrator edits while the user
-  // page is open. The countdown itself is driven by the local one-second clock.
-  useEffect(() => {
-    if (!apiMode || !reservation?.id || loading) return
-    const controller = new AbortController()
-
-    async function syncReservation() {
-      try {
-        const saved = await fetchMyReservation(controller.signal)
-        if (controller.signal.aborted) return
-        if (!saved) {
-          setReservation((current) => current?.id === reservation.id ? null : current)
-          return
-        }
-        const seat = apiSeats.find((item) => item.seat_id === saved.seat_id)
-          ?? await fetchSeat(saved.seat_id, controller.signal)
-        if (controller.signal.aborted || !seat || !roomIdsByCode[seat.room_code]) return
-        const updated = toWebReservation(saved, seat)
-        setReservation((current) => current?.id === updated.id
-          && current.startsAt === updated.startsAt
-          && current.endsAt === updated.endsAt
-          && current.seat === updated.seat
-          && current.roomId === updated.roomId
-          ? current
-          : updated)
-      } catch {
-        // Keep the last known reservation when a temporary poll fails.
-      }
-    }
-
-    syncReservation()
-    const timer = window.setInterval(syncReservation, 2000)
-    window.addEventListener('focus', syncReservation)
+    sync()
+    const timer = window.setInterval(sync, 5000)
+    window.addEventListener('focus', sync)
     return () => {
       controller.abort()
       window.clearInterval(timer)
-      window.removeEventListener('focus', syncReservation)
+      window.removeEventListener('focus', sync)
     }
-  }, [apiSeats, loading, reservation?.id])
+  }, [loadVersion])
 
   function refresh() {
+    setLoading(true)
+    setLoadError('')
     setLoadVersion((version) => version + 1)
   }
 
@@ -179,6 +156,7 @@ function App({ accountControl }) {
   async function updateApiReservation(send, onSuccess) {
     if (savingReservation.current || loading) return
     savingReservation.current = true
+    reservationReads.current?.abort()
     setSaving(true)
     try {
       onSuccess(await send())
@@ -197,7 +175,11 @@ function App({ accountControl }) {
     if (!session()) { window.dispatchEvent(new Event('korea-login')); return }
     const seat = apiSeats.find((item) => roomIdsByCode[item.room_code] === roomId
       && Number(item.seat_number) === number && item.reservation_state === 'AVAILABLE')
-    if (!seat) return
+    if (!seat) {
+      setSelectedSeat(null)
+      showNotice('선택한 좌석은 더 이상 예약할 수 없어요.')
+      return
+    }
     const send = activeReservation
       ? () => moveApiReservation(activeReservation.id, seat.seat_id)
       : () => reserveApiSeat(seat.seat_id, reservationDuration / 1000)
