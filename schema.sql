@@ -216,8 +216,10 @@ CREATE INDEX user_seat_history_user_time
 -- Cascades when the source reservation is removed, leaving history intact.
 CREATE TABLE reservation_history_progress (
     reservation_id INTEGER PRIMARY KEY REFERENCES reservations(id) ON DELETE CASCADE,
-    last_move_id INTEGER NOT NULL DEFAULT 0 CHECK (last_move_id >= 0)
+    last_move_id INTEGER NOT NULL DEFAULT 0 CHECK (last_move_id >= 0),
+    history_id INTEGER REFERENCES user_seat_history(id) ON DELETE SET NULL
 );
+CREATE UNIQUE INDEX reservation_history_progress_history ON reservation_history_progress(history_id);
 
 -- Transaction-local permission marker. The server removes it before commit;
 -- BEGIN IMMEDIATE serializes writers, and rollback removes it on failure.

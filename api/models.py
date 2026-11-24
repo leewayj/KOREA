@@ -160,6 +160,14 @@ class SeatHistory(BaseModel):
     used_at: int = Field(description='예약 시작 또는 좌석 이동 시각. UTC Unix 초. 원본 예약 삭제 후에도 유지.')
 
 
+class SeatUsageSummary(BaseModel):
+    seat_id: int
+    room_id: int
+    room_name: str
+    seat_number: str
+    usage_count: int
+
+
 class NextReservation(BaseModel):
     id: int
     starts_at: int

@@ -15,8 +15,8 @@ function post(path, body) {
   return request(path, { method: 'POST', body })
 }
 
-export const reserveApiSeat = (seatId, durationSeconds) =>
-  post('/reservations', { seat_id: seatId, def_time: durationSeconds })
+export const reserveApiSeat = (seatId) =>
+  post('/reservations', { seat_id: seatId })
 
 export const moveApiReservation = (id, seatId) =>
   post('/reservations/' + id + '/move', { target_seat_id: seatId })

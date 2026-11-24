@@ -230,6 +230,18 @@ class Service:
                 WHERE s_id=? ORDER BY used_at DESC,id DESC LIMIT ? OFFSET ?
             ''', (s_id, limit, offset))]
 
+    def my_seat_usage_summary(self, s_id, limit=100, offset=0):
+        # Flush due history before counting, using the same transaction as the read.
+        with connection(self.path, write=True) as db:
+            return [dict(row) for row in db.execute('''
+                SELECT s.id AS seat_id,r.id AS room_id,r.name AS room_name,
+                       s.number AS seat_number,COUNT(*) AS usage_count
+                FROM user_seat_history h JOIN seats s ON s.id=h.seat_id
+                JOIN rooms r ON r.id=s.room_id
+                WHERE h.s_id=? GROUP BY s.id,r.id,r.name,s.number
+                ORDER BY usage_count DESC,s.id LIMIT ? OFFSET ?
+            ''', (s_id,limit,offset))]
+
     def extend(self, reservation_id, *, owner_s_id):
         with connection(self.path, write=True) as db:
             row = owned_reservation(db, reservation_id, owner_s_id)
