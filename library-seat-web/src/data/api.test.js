@@ -25,13 +25,13 @@ test('login token accompanies reservation requests and logout clears it', async 
     if (url === '/auth/login') return Response.json({ access_token: 'test-session', user: { s_id: '2099000001' } })
     assert.equal(options.headers.Authorization, 'Bearer test-session')
     if (url === '/reservations') {
-      assert.deepEqual(JSON.parse(options.body), { seat_id: 2, def_time: 600 })
+      assert.deepEqual(JSON.parse(options.body), { seat_id: 2 })
       return Response.json({ id: 4, seat_id: 2 }, { status: 201 })
     }
     return Response.json({ message: 'logged out' })
   })
   await login({ s_id: '2099000001' })
-  assert.equal((await reserveApiSeat(2, 600)).id, 4)
+  assert.equal((await reserveApiSeat(2)).id, 4)
   await logout()
   assert.equal(session(), null)
 })
