@@ -262,7 +262,7 @@ function App({ accountControl }) {
     <div ref={appShell} className={`app-shell${['seats', 'selected'].includes(page) ? ' seat-shell' : ['reservation', 'expired'].includes(page) ? ' reservation-shell' : ''}`}>
       <header className="app-header" inert={selectedSeat !== null || showReturnDialog}>
         <div className="navigation">
-          {page === 'home' ? (accountControl ?? <span className="navigation-spacer" aria-hidden="true" />) : (
+          {page === 'home' ? <span className="navigation-spacer" aria-hidden="true" /> : (
             <button className="icon-button" aria-label={['seats', 'selected'].includes(page) ? '열람실 목록으로 돌아가기' : endingSoon ? '홈으로 돌아가기' : 'HOME'} onClick={() => {
               if (['seats', 'selected'].includes(page)) navigate('rooms')
               else { if (page === 'expired') clearReservation(); navigate('home') }
@@ -271,7 +271,7 @@ function App({ accountControl }) {
             </button>
           )}
           <h1>{pageTitle}</h1>
-          <span className="navigation-spacer" aria-hidden="true" />
+          {page === 'home' ? (accountControl ?? <span className="navigation-spacer" aria-hidden="true" />) : <span className="navigation-spacer" aria-hidden="true" />}
         </div>
       </header>
 

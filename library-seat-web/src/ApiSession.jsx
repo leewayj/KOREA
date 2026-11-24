@@ -10,12 +10,19 @@ export default function ApiSession({ children }) {
   const [register, setRegister] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [logoutConfirm, setLogoutConfirm] = useState(false)
   const dialog = useRef(null)
+  const logoutDialog = useRef(null)
+  const userLoginPage = apiEnabled && !preview && !admin && !account
   useEffect(() => {
     const update = () => {
-      setAccount(session())
-      if (session()) dialog.current?.close()
-      else if (admin && !dialog.current?.open) dialog.current?.showModal()
+      const currentAccount = session()
+      setAccount(currentAccount)
+      if (currentAccount) dialog.current?.close()
+      else {
+        setLogoutConfirm(false)
+        if (admin && !dialog.current?.open) dialog.current?.showModal()
+      }
     }
     const open = () => {
       setAccountMenu(false)
@@ -31,6 +38,11 @@ export default function ApiSession({ children }) {
       window.removeEventListener('korea-login', open)
     }
   }, [admin, preview])
+  useEffect(() => {
+    const currentDialog = logoutDialog.current
+    if (logoutConfirm && !currentDialog?.open) currentDialog?.showModal()
+    else if (!logoutConfirm && currentDialog?.open) currentDialog.close()
+  }, [logoutConfirm])
   if (!apiEnabled || preview) return children(null)
   async function submit(event) {
     event.preventDefault()
@@ -45,17 +57,23 @@ export default function ApiSession({ children }) {
     finally { setBusy(false) }
   }
   const accountControl = (
-    <button type="button" className="icon-button account-control" aria-label={account ? '내 계정' : '로그인'} aria-haspopup="dialog" disabled={busy} onClick={() => {
-      setAccountMenu(Boolean(account))
-      setRegister(false)
+    <button type="button" className="icon-button logout-control" aria-label="로그아웃" aria-haspopup="dialog" disabled={busy} onClick={() => {
       setError('')
-      dialog.current?.showModal()
+      setLogoutConfirm(true)
     }}>
-      <img src="/assets/account-v2.svg" alt="" />
+      <img src="/assets/logout-v2.svg" alt="" />
     </button>
   )
   return <>
-    <Fragment key={account?.user?.s_id || account?.admin?.username || 'guest'}>{children(accountControl)}</Fragment>
+    {userLoginPage ? (
+      <LoginScreen
+        register={register}
+        busy={busy}
+        error={error}
+        onSubmit={submit}
+        onToggleRegister={() => { setRegister(!register); setError('') }}
+      />
+    ) : <Fragment key={account?.user?.s_id || account?.admin?.username || 'guest'}>{children(accountControl)}</Fragment>}
     <dialog ref={dialog} className="api-auth" aria-labelledby="api-login-title" onCancel={event => { if (busy) event.preventDefault() }}>
       <h2 id="api-login-title">{accountMenu ? '내 계정' : admin ? '관리자 로그인' : register ? '사용자 등록' : '학번 로그인'}</h2>
       {accountMenu ? (
@@ -88,5 +106,55 @@ export default function ApiSession({ children }) {
       </form>
       )}
     </dialog>
+    <dialog
+      ref={logoutDialog}
+      className="logout-confirmation"
+      aria-labelledby="logout-confirmation-title"
+      onCancel={event => { if (busy) event.preventDefault(); else setLogoutConfirm(false) }}
+      onClick={event => { if (event.target === event.currentTarget && !busy) setLogoutConfirm(false) }}
+    >
+      <h2 id="logout-confirmation-title">로그아웃 하시겠습니까?</h2>
+      <button type="button" className="logout-confirm-button" disabled={busy} onClick={async () => {
+        if (busy) return
+        setBusy(true)
+        setError('')
+        try {
+          await logout()
+          setLogoutConfirm(false)
+        } catch (failure) {
+          setError(failure.message)
+        } finally {
+          setBusy(false)
+        }
+      }}>{busy ? '처리 중…' : '확인'}</button>
+    </dialog>
   </>
+}
+
+function LoginScreen({ register, busy, error, onSubmit, onToggleRegister }) {
+  return (
+    <section className="login-shell" aria-label={register ? '사용자 등록' : '로그인'}>
+      <header className="login-header"><h1>{register ? '회원가입' : '로그인'}</h1></header>
+      <main className="login-content">
+        <form className={`login-form${register ? ' is-registering' : ''}`} onSubmit={onSubmit}>
+          <div className="login-card">
+            {register ? (
+              <>
+                <label className="login-field"><span>이름</span><input name="name" required maxLength={100} autoComplete="name" /></label>
+                <label className="login-field"><span>학번 (숫자 10자리)</span><input name="s_id" required pattern="[0-9]{10}" inputMode="numeric" autoComplete="username" /></label>
+                <label className="login-field"><span>단과대학</span><input name="college" required maxLength={100} /></label>
+                <label className="login-field"><span>학과</span><input name="department" required maxLength={100} /></label>
+              </>
+            ) : (
+              <label className="login-field"><span>학번 (숫자 10자리)</span><input name="s_id" required pattern="[0-9]{10}" inputMode="numeric" autoComplete="username" /></label>
+            )}
+            {error && <p className="login-error" role="alert">{error}</p>}
+            {!register && <button className="login-register-link" type="button" disabled={busy} onClick={onToggleRegister}>회원가입→</button>}
+            {register && <button className="login-register-link register-back" type="button" disabled={busy} onClick={onToggleRegister}>로그인으로 돌아가기</button>}
+          </div>
+          <button className="login-submit" type="submit" disabled={busy}>{busy ? '처리 중…' : register ? '회원가입 하기' : '로그인 하기'}</button>
+        </form>
+      </main>
+    </section>
+  )
 }
