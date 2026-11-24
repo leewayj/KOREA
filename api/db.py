@@ -90,6 +90,12 @@ def validate(path: Path):
         if 'led_state' not in {r[1] for r in db.execute('PRAGMA table_info(seat_device_reports)')}:
             raise RuntimeError('LED field rename requires database migration.')
         db.execute('SELECT seat_id,device_kind,received_at,led_state,led_state_updated_at,tracked_reservation_id,tracked_starts_at,tracked_ends_at FROM seat_device_reports LIMIT 0')
+        if 'history_id' not in {row[1] for row in db.execute('PRAGMA table_info(reservation_history_progress)')}:
+            raise RuntimeError('Final-seat history requires database migration.')
+        if db.execute('''SELECT 1 FROM reservation_history_progress p
+            JOIN reservation_owners o ON o.reservation_id=p.reservation_id
+            JOIN user_seat_history h ON h.id=p.history_id WHERE h.s_id<>o.s_id LIMIT 1''').fetchone():
+            raise RuntimeError('History owner mismatch.')
         db.execute('SELECT * FROM seat_status LIMIT 0')
         db.execute('SELECT * FROM reservation_status LIMIT 0')
 

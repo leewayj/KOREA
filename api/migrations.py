@@ -25,6 +25,8 @@ PRE_STATE_POLICY_HASHES = {'reservations_validate_update': 'ff378f88c965a666278e
 # Exact preceding telemetry table; rename columns without rebuilding data.
 PRE_LED_TABLE_HASH = 'e61cefc1481e6326ae4dae8b32b8ffcb90ecaf6d408093f09a3ad077d2026d0e'
 
+PRE_FINAL_HISTORY_HASH = '1eb866c01b75ad68fbe6835207ca67174229e71ebbf4eafddbc593dd00d191e0'
+
 def definitions(db):
     return {name: obj.sql for name, obj in read_objects(db).items()}
 
@@ -33,7 +35,10 @@ def normalize(sql):
     if sql is None:
         return None
     # SQLite versions differ in quoting identifiers after RENAME COLUMN.
-    return ' '.join(sql.split()).replace('"led_state"', 'led_state').replace('"led_state_updated_at"', 'led_state_updated_at')
+    result = ' '.join(sql.split()).replace('"led_state"', 'led_state').replace('"led_state_updated_at"', 'led_state_updated_at').replace(' ,', ',')
+    if result.startswith('CREATE TABLE reservation_history_progress '):
+        result = result[:-1].rstrip()+')'
+    return result
 
 
 def upgrade(path: Path, backup: Path | None):
@@ -52,6 +57,9 @@ def upgrade(path: Path, backup: Path | None):
         current = definitions(db)
         rename_led = ('seat_device_reports' in current and
             hashlib.sha256(normalize(current['seat_device_reports']).encode()).hexdigest() == PRE_LED_TABLE_HASH)
+        upgrade_history = ('reservation_history_progress' in current and
+            hashlib.sha256(normalize(current['reservation_history_progress']).encode()).hexdigest() == PRE_FINAL_HISTORY_HASH)
+        history_result = None
         missing_core = [name for name in CORE_TABLES if name not in current]
         if missing_core:
             raise RuntimeError('Compatible KOREA database is required; missing source tables: '
@@ -72,6 +80,7 @@ def upgrade(path: Path, backup: Path | None):
                 or hashlib.sha256(normalize(current[name]).encode()).hexdigest()
                     in (PRE_MOVE_RULE_HASHES.get(name), PRE_STATE_POLICY_HASHES.get(name))))
             known_old = known_old or (name == 'seat_device_reports' and rename_led)
+            known_old = known_old or (name == 'reservation_history_progress' and upgrade_history)
             if not known_old:
                 raise RuntimeError('Partial or different schema found for object: '
                                    + name + '; inspect before migration.')
@@ -101,6 +110,11 @@ def upgrade(path: Path, backup: Path | None):
                 raise
         try:
             db.execute('BEGIN IMMEDIATE')
+            if upgrade_history:
+                db.execute('ALTER TABLE reservation_history_progress ADD COLUMN history_id INTEGER REFERENCES user_seat_history(id) ON DELETE SET NULL')
+                current = definitions(db)
+                if normalize(current['reservation_history_progress']) != normalize(expected['reservation_history_progress']):
+                    raise RuntimeError('History schema verification failed.')
             if rename_led:
                 db.execute('ALTER TABLE seat_device_reports RENAME COLUMN applied_led TO led_state')
                 db.execute('ALTER TABLE seat_device_reports RENAME COLUMN applied_led_updated_at TO led_state_updated_at')
@@ -142,6 +156,9 @@ def upgrade(path: Path, backup: Path | None):
             elif 'reservation_history_progress' not in current:
                 from .seat_history import record
                 record(db)
+            if upgrade_history:
+                from .seat_history import migrate_links
+                history_result = migrate_links(db)
             after = definitions(db)
             if not all(normalize(after.get(name)) == normalize(sql) for name, sql in expected.items()):
                 raise RuntimeError('Migration schema verification failed.')
@@ -151,7 +168,7 @@ def upgrade(path: Path, backup: Path | None):
         except Exception:
             db.rollback()
             raise
-        return {'status': 'upgraded', 'backup': str(backup) if backup is not None else None}
+        return {'status': 'upgraded', 'backup': str(backup) if backup is not None else None, 'history': history_result}
     finally:
         db.close()
 
