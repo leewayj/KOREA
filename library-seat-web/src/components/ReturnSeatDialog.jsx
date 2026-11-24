@@ -27,9 +27,8 @@ export default function ReturnSeatDialog({ triggerRef, onOpenChange, onConfirm, 
 
   return <>
     <div className="seat-modal-backdrop" aria-hidden="true" onClick={() => { if (!saving) onOpenChange(false) }} />
-    <section ref={dialog} className="seat-dialog return-dialog" role="dialog" aria-modal="true" aria-labelledby="return-dialog-title" aria-describedby="return-dialog-description">
+    <section ref={dialog} className="seat-dialog return-dialog" role="dialog" aria-modal="true" aria-labelledby="return-dialog-title">
       <h2 id="return-dialog-title">좌석을 반납하시겠습니까?</h2>
-      <p id="return-dialog-description">확인하면 좌석이 반납되고<br />홈 화면으로 이동합니다.</p>
       <div className="seat-dialog-actions">
         <Button isDisabled={saving} variant="neutral" onPress={() => onOpenChange(false)}>취소</Button>
         <Button isDisabled={saving} onPress={onConfirm}>확인</Button>
