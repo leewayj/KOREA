@@ -6,12 +6,12 @@ import './reservation-flow.css'
 
 export default function ReservationPage({ reservation, room, onChange, onExtend, returnOpen, onRequestReturn, now, saving, endingSoon }) {
   const remaining = Math.max(0, reservation.endsAt - now)
-  const totalSeconds = Math.ceil(remaining / 1000)
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor(totalSeconds / 60) % 60
-  const seconds = totalSeconds % 60
-  const remainingLabel = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  const totalMinutes = Math.ceil(remaining / 60_000)
+  const hours = Math.floor(totalMinutes / 60)
+  const minutes = totalMinutes % 60
+  const remainingLabel = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
   const duration = reservation.endsAt - reservation.startsAt
+  const displayedDuration = (Math.floor(reservation.endsAt / 60_000) - Math.floor(reservation.startsAt / 60_000)) * 60_000
   const elapsedAngle = Math.min(360, Math.max(0, (1 - remaining / duration) * 360))
 
   return (
@@ -26,10 +26,10 @@ export default function ReservationPage({ reservation, room, onChange, onExtend,
           <div className="reservation-status"><span>내 좌석</span><strong role="status">{endingSoon ? '종료 10분 전' : '예약 중'}</strong></div>
           <div className="reservation-seat-time">
             <strong className="reservation-seat-number">{reservation.seat}번</strong>
-            <div className="reservation-clock" role="timer" aria-label={`남은 시간 ${hours}시간 ${minutes}분 ${seconds}초`}>
+            <div className="reservation-clock" role="timer" aria-label={`남은 시간 ${hours}시간 ${minutes}분`}>
               <img src={endingSoon ? "/assets/v02-timer-warning-track.svg" : "/assets/v02-timer-track.svg"} alt="" className="reservation-clock-track" />
               <span className={endingSoon ? "reservation-clock-warning" : "reservation-clock-ring"} style={{ maskImage: `conic-gradient(transparent ${elapsedAngle}deg, black ${elapsedAngle}deg)` }}><img src={endingSoon ? "/assets/v02-timer-warning-ring.svg" : "/assets/v02-timer-ring.svg"} alt="" /></span>
-              <span>남은 시간</span><strong>{remainingLabel}</strong><small>시간:분:초</small>
+              <span>남은 시간</span><strong>{remainingLabel}</strong><small>시간:분</small>
             </div>
           </div>
           <div className="reservation-time-details">
@@ -37,7 +37,7 @@ export default function ReservationPage({ reservation, room, onChange, onExtend,
             <dl>
               <div><dt>시작</dt><dd>{timeFormat.format(reservation.startsAt)}</dd></div>
               <div><dt>종료</dt><dd>{timeFormat.format(reservation.endsAt)}</dd></div>
-              <div><dt>총 이용 시간</dt><dd>{formatDuration(duration)}</dd></div>
+              <div><dt>총 이용 시간</dt><dd>{formatDuration(displayedDuration, { showSeconds: false })}</dd></div>
             </dl>
           </div>
         </section>

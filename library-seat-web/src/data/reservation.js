@@ -35,7 +35,7 @@ export function savePreviewReservation(reservation) {
 export const timeFormat = new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit' })
 export const dateFormat = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' })
 
-export function formatDuration(durationMs) {
+export function formatDuration(durationMs, { showSeconds = true } = {}) {
   const totalSeconds = Math.max(0, Math.floor(durationMs / 1000))
   const hours = Math.floor(totalSeconds / 3600)
   const minutes = Math.floor(totalSeconds / 60) % 60
@@ -44,8 +44,8 @@ export function formatDuration(durationMs) {
   return [
     hours && `${hours}시간`,
     minutes && `${minutes}분`,
-    seconds && `${seconds}초`,
-  ].filter(Boolean).join(' ') || '0초'
+    showSeconds && seconds && `${seconds}초`,
+  ].filter(Boolean).join(' ') || (showSeconds ? '0초' : '0분')
 }
 
 export function isReservationActive(reservation, now = Date.now()) {
