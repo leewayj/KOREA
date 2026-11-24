@@ -22,9 +22,9 @@ const int BLUE_PIN = 27;
 
 HX711 scale;
 
-// 착석·비착석 임계값 (히스테리시스)
-const long OCCUPIED_THRESHOLD = 200000; // 2kg 이상 -> 착석 판정
-const long EMPTY_THRESHOLD = 150000;    // 1.5kg 이하 -> 비착석 후보
+// 착석·비착석 임계값 (2L 생수병 약 200,000 시연 최적화)
+const long OCCUPIED_THRESHOLD = 180000; // 1.8kg 이상 -> 착석 판정 (2L 생수병 안정 인식)
+const long EMPTY_THRESHOLD = 130000;    // 1.3kg 이하 -> 비착석 후보
 
 // 앉은 채 의자를 들었다 놓는 동작 방어 (이석 유예 시간)
 const unsigned long LEAVE_DEBOUNCE_MS = 3000; // 3초 이상 무게가 빠져야 실제 이석 인정
@@ -34,10 +34,10 @@ const long TILT_NEGATIVE_LIMIT = -120000;     // 이보다 큰 음수가 지속�
 const long OVERLOAD_LIMIT = 2000000;          // 비정상 과하중 한계
 const unsigned long ABNORMAL_HOLD_MS = 3000;  // 3초 이상 비정상 값 지속 시 전도/이상 판정
 
-// 자동 영점(Auto-Tare) 설정 (실측 노이즈 -7,300 ~ +33,000 반영)
-const long AUTO_TARE_MAX_OFFSET = 130000;     // 빈 의자 위치 변화 오차 허용 상한
-const long AUTO_TARE_MIN_DRIFT = 45000;       // ±45,000 이상 영점이 틀어졌을 때만 재보정 (평소 노이즈 무시)
-const long STABILITY_TOLERANCE = 15000;       // 센서 기본 노이즈 출렁임을 감안한 안정 허용 오차
+// 자동 영점(Auto-Tare) 설정 (15회 평균 필터링 기준 정밀 보정)
+const long AUTO_TARE_MAX_OFFSET = 120000;     // 빈 의자 위치 변화 오차 허용 상한
+const long AUTO_TARE_MIN_DRIFT = 15000;       // ±15,000 이상 영점이 틀어지면 재보정 (생수병 인식 오차 방지)
+const long STABILITY_TOLERANCE = 8000;        // 15회 평균 적용 후 안정 허용 오차
 const unsigned long AUTO_TARE_WAIT_MS = 4000; // 안정 상태 4초 유지 시 자동 영점
 
 // 통신/센서 오류 판단 기준
@@ -237,7 +237,8 @@ void loop() {
         long reading = 0;
 
         if (scale.is_ready()) {
-            reading = scale.get_units(5) * -1;
+            // 15회 평균 측정으로 노이즈 대폭 감소
+            reading = scale.get_units(15) * -1;
             hasValidSensor = true;
             isSensorError = false;
             lastSensorOkMillis = millis();
