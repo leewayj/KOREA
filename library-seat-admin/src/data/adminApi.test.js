@@ -24,7 +24,7 @@ test('모든 API가 실패하면 빈 통계와 실제 0건을 구분한다', asy
 });
 
 test('층과 예약 조회가 실패해도 열람실과 좌석 현황은 보존한다', async (t) => {
-  respond(t, { '/rooms': rooms, '/seats': [
+  respond(t, { '/rooms': rooms, '/admin/seats': [
     { seat_id: 3, room_code: 'R1', floor_code: 'F2', seat_number: '1', occupancy_state: 'OCCUPIED' },
   ] });
   const data = await loadAdminData();
@@ -45,7 +45,7 @@ test('좌석 조회가 실패해도 정상 응답한 설정과 열람실을 보�
 
 
 test('서버가 빈 열람실 목록을 반환하면 기본 열람실을 표시하지 않는다', async (t) => {
-  respond(t, { '/rooms': [], '/seats': [] });
+  respond(t, { '/rooms': [], '/admin/seats': [] });
   const data = await loadAdminData();
   assert.equal(data.roomsKnown, true);
   assert.deepEqual(data.rooms, []);

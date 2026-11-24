@@ -17,6 +17,12 @@ import {
 import { adminRequest, defaultRoomDirectory, loadAdminData } from "./data/adminApi.js";
 
 const unavailable = "-";
+const ledLabels = {
+  OFF: "소등", BLUE_ON: "파란색 점등", ORANGE_ON: "주황색 점등", RED_BLINK: "빨간색 점멸",
+};
+const sensorLabels = {
+  OCCUPIED: "착석 감지", EMPTY: "비착석 감지", SENSOR_ERROR: "센서 오류", UNKNOWN: "미확인",
+};
 const loadingData = {
   loading: true, rooms: defaultRoomDirectory, roomsKnown: false, currentKnown: false,
   scheduledKnown: false, reservations: [], settings: null,
@@ -236,6 +242,7 @@ function SeatPage({ data, room, seat, now, go, commit }) {
 function SeatDetails({ data, room, seat, now, go, commit }) {
   const dialog = useRef(null),
     r = seat.reservation;
+  const device = seat.device;
   const next = data.reservations
     .filter(
       (x) => x.roomId === room.id && x.seat === seat.number && x.startsAt > now,
@@ -287,15 +294,15 @@ function SeatDetails({ data, room, seat, now, go, commit }) {
           {seat.unknown ? unavailable : seat.occupied ? "착석 중" : "비착석"}
         </Info>
         <Info label="LED 상태">
-          {seat.unknown ? unavailable : seat.occupied ? "소등" : "점등 (시연)"}
+          {ledLabels[device?.target_led] ?? unavailable}
         </Info>
-        <Info label="센서 상태">시연값 · 실제 센서 미연결</Info>
+        <Info label="센서 상태">{sensorLabels[device?.occupancy_state] ?? unavailable}</Info>
       </Card>
       <Card>
         <h3 className="device-title">장치의 마지막 적용 응답</h3>
-        <Info label="수신 응답">없음 · 실제 장치 미연결</Info>
-        <Info label="장치 통신">미연결</Info>
-        <Info label="최근 수신">{unavailable}</Info>
+        <Info label="수신 응답">{device?.led_state === null ? "미회신" : ledLabels[device?.led_state] ?? unavailable}</Info>
+        <Info label="장치 통신">{device?.device_connected == null ? unavailable : device.device_connected ? "연결" : "미연결"}</Info>
+        <Info label="최근 수신">{device?.led_state_updated_at == null ? unavailable : dateTime(device.led_state_updated_at * 1000)}</Info>
       </Card>
       {r && (
         <Button variant="neutral" onPress={() => dialog.current.showModal()}>

@@ -37,7 +37,7 @@ export async function loadAdminData(token, signal) {
   const results = await Promise.allSettled([
     adminRequest('/floors', options),
     adminRequest('/rooms', options),
-    fetchPages('/seats', options),
+    fetchPages('/admin/seats', options),
     fetchPages('/reservations?effective_status=IN_USE', options),
     fetchPages('/reservations?effective_status=SCHEDULED', options),
     adminRequest('/admin/reservation-settings', options),

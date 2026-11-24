@@ -103,6 +103,7 @@ export function seatsFor(data, roomId, now) {
     );
     return {
       number,
+      device: apiSeats ? item : null,
       reservation,
       occupied,
       unknown,
