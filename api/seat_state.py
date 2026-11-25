@@ -1,7 +1,7 @@
 """Server seat/LED projection and conservative sensor continuity evidence."""
 
 LEDS = {'RESERVED_EMPTY': 'BLUE_ON', 'EXPIRING_OCCUPIED': 'ORANGE_ON',
-        'EXPIRED_OCCUPIED': 'RED_BLINK'}
+        'EXPIRED_OCCUPIED': 'RED_BLINK', 'UNRESERVED_OCCUPIED': 'RED_BLINK'}
 TIMEOUT = 10
 
 
