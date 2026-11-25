@@ -102,7 +102,7 @@ void updateLED() {
             setColor(0, 0, 255);
             break;
         case LED_ORANGE_ON:
-            setColor(255, 80, 0);
+            setColor(255, 25, 0); // 노란빛을 줄이고 진한 주황색으로 발색 보정
             break;
         case LED_RED_BLINK:
             if (millis() - previousBlinkMillis >= 500) {
