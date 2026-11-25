@@ -3,6 +3,7 @@
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
+#include <Ticker.h>
 #include "HX711.h"
 #include "secrets.h"
 
@@ -21,6 +22,7 @@ const int GREEN_PIN = 26;
 const int BLUE_PIN = 27;
 
 HX711 scale;
+Ticker ledTicker; // HTTPS 통신 중에도 멈추지 않고 LED를 제어하는 독립 타이머
 
 // 착석·비착석 임계값 (2L 생수병 약 200,000 시연 최적화)
 const long OCCUPIED_THRESHOLD = 180000; // 1.8kg 이상 -> 착석 판정 (2L 생수병 안정 인식)
@@ -44,6 +46,9 @@ const unsigned long AUTO_TARE_WAIT_MS = 4000; // 안정 상태 4초 유지 시 �
 const unsigned long SERVER_TIMEOUT_MS = 15000;
 const unsigned long SENSOR_TIMEOUT_MS = 3000;
 
+// 빨간색 경고 점멸 주기 (초 단위, 0.2초 = 200ms)
+const float RED_BLINK_INTERVAL_SEC = 0.2;
+
 // LED 출력 모드 정의
 enum LedMode {
     LED_OFF,
@@ -52,7 +57,8 @@ enum LedMode {
     LED_RED_BLINK
 };
 
-LedMode currentLedMode = LED_OFF;
+volatile LedMode currentLedMode = LED_OFF;
+volatile bool blinkState = false;
 
 // 서버 및 센서 상태 변수
 String serverSeatStatus = "UNKNOWN";
@@ -64,7 +70,7 @@ bool hasServerSynced = false;
 bool hasValidSensor = false;
 bool isServerError = false;
 bool isSensorError = false;
-bool isChairFallen = false; // 의자 넘어짐 상태 플래그
+bool isChairFallen = false;
 unsigned long lastServerOkMillis = 0;
 unsigned long lastSensorOkMillis = 0;
 
@@ -80,11 +86,9 @@ unsigned long stableStartMillis = 0;
 bool isTrackingStability = false;
 
 // 주기 타이머 변수
-unsigned long previousBlinkMillis = 0;
 unsigned long previousServerMillis = 0;
 unsigned long previousSensorMillis = 0;
 unsigned long previousWifiCheckMillis = 0;
-bool blinkState = false;
 // ========================================================
 
 void setColor(int r, int g, int b) {
@@ -93,7 +97,8 @@ void setColor(int r, int g, int b) {
     analogWrite(BLUE_PIN, b);
 }
 
-void updateLED() {
+// Ticker 타이머에 의해 0.2초마다 백그라운드에서 자동 호출되는 LED 제어 함수
+void onLedTimerTick() {
     switch (currentLedMode) {
         case LED_OFF:
             setColor(0, 0, 0);
@@ -102,16 +107,25 @@ void updateLED() {
             setColor(0, 0, 255);
             break;
         case LED_ORANGE_ON:
-            setColor(255, 25, 0); // 노란빛을 줄이고 진한 주황색으로 발색 보정
+            setColor(255, 25, 0);
             break;
         case LED_RED_BLINK:
-            if (millis() - previousBlinkMillis >= 500) {
-                previousBlinkMillis = millis();
-                blinkState = !blinkState;
-                if (blinkState) setColor(255, 0, 0);
-                else setColor(0, 0, 0);
-            }
+            blinkState = !blinkState;
+            if (blinkState) setColor(255, 0, 0);
+            else setColor(0, 0, 0);
             break;
+    }
+}
+
+void setLedMode(LedMode newMode) {
+    if (currentLedMode != newMode) {
+        currentLedMode = newMode;
+        if (newMode == LED_RED_BLINK) {
+            blinkState = true;
+            setColor(255, 0, 0);
+        } else {
+            onLedTimerTick();
+        }
     }
 }
 
@@ -131,6 +145,9 @@ void setup() {
     pinMode(GREEN_PIN, OUTPUT);
     pinMode(BLUE_PIN, OUTPUT);
     setColor(0, 0, 0);
+
+    // 0.2초마다 독립적으로 LED 상태를 갱신하도록 타이머 시작
+    ledTicker.attach(RED_BLINK_INTERVAL_SEC, onLedTimerTick);
 
     scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
     scale.tare();
@@ -237,7 +254,6 @@ void loop() {
         long reading = 0;
 
         if (scale.is_ready()) {
-            // 빠른 반응 속도를 위한 5회 평균 측정 (0.5초 소요)
             reading = scale.get_units(5) * -1;
             hasValidSensor = true;
             isSensorError = false;
@@ -285,7 +301,7 @@ void loop() {
                 }
             }
 
-            // [C] 자동 영점(Auto-Tare): 넘어지지 않았고, 비착석이며, 미세 오차 범위 내 안정화 시 실행
+            // [C] 자동 영점(Auto-Tare)
             if (!isChairFallen && !isOccupied && !isLeavePending &&
                 abs(reading) < AUTO_TARE_MAX_OFFSET && abs(reading) > AUTO_TARE_MIN_DRIFT) {
                 if (abs(reading - prevReading) < STABILITY_TOLERANCE) {
@@ -312,29 +328,27 @@ void loop() {
             }
         }
 
-        // [D] 최종 LED 결정 (센서 오류 또는 의자 넘어짐 시 안전 소등)
+        // [D] 최종 LED 결정
         String displayStatus = serverSeatStatus;
 
         if (!hasServerSynced || isServerError || !hasValidSensor || isSensorError || isChairFallen) {
-            currentLedMode = LED_OFF;
+            setLedMode(LED_OFF);
             displayStatus = isChairFallen ? "CHAIR_FALLEN" : "UNKNOWN";
         }
         else if (serverTargetLed == "BLUE_ON") {
-            currentLedMode = LED_BLUE_ON;
+            setLedMode(LED_BLUE_ON);
         }
         else if (serverTargetLed == "ORANGE_ON") {
-            currentLedMode = LED_ORANGE_ON;
+            setLedMode(LED_ORANGE_ON);
         }
         else if (serverTargetLed == "RED_BLINK") {
-            currentLedMode = LED_RED_BLINK;
+            setLedMode(LED_RED_BLINK);
         }
         else {
-            currentLedMode = LED_OFF;
+            setLedMode(LED_OFF);
         }
 
-        updateLED();
-
-        // [E] 서버로 센서/LED 상태 회신 (의자 넘어짐 시 SENSOR_ERROR로 보고)
+        // [E] 서버로 센서/LED 상태 회신
         if (WiFi.status() == WL_CONNECTED && (hasValidSensor || isSensorError)) {
             WiFiClientSecure client;
             client.setInsecure();
@@ -372,6 +386,4 @@ void loop() {
         Serial.print(" | 적용LED: ");
         Serial.println(ledModeToString(currentLedMode));
     }
-
-    updateLED();
 }
