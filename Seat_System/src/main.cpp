@@ -52,7 +52,7 @@ const unsigned long SERVER_TIMEOUT_MS = 15000;
 const unsigned long SENSOR_TIMEOUT_MS = 3000;
 
 // 통신 주기 설정 (빠른 동기화 최적화)
-const unsigned long SERVER_GET_INTERVAL_MS = 700;  // 0.7초마다 서버 상태 조회
+const unsigned long SERVER_GET_INTERVAL_MS = 700;   // 0.7초마다 서버 상태 조회
 const unsigned long SENSOR_POST_INTERVAL_MS = 1000; // 1초마다 정기 보고 (상태 변화 시 즉시 보고)
 
 // 빨간색 경고 점멸 주기 (0.2초 = 200ms)
@@ -364,12 +364,16 @@ void loop() {
             }
         }
 
-        // [D] 최종 LED 결정
+        // [D] 최종 LED 결정 (예약 없는 빈 좌석 또는 무단 점유 상태 착석 시 즉시 빨간색 점멸)
         String displayStatus = serverSeatStatus;
 
         if (!hasServerSynced || isServerError || !hasValidSensor || isSensorError || isChairFallen) {
             setLedMode(LED_OFF);
             displayStatus = isChairFallen ? "CHAIR_FALLEN" : "UNKNOWN";
+        }
+        else if ((serverSeatStatus == "AVAILABLE" || serverSeatStatus == "UNRESERVED_OCCUPIED") && isOccupied) {
+            // 예약 없는 좌석(AVAILABLE) 및 서버 무단 점유 상태(UNRESERVED_OCCUPIED)에서 착석 유지 시 빨간색 점멸
+            setLedMode(LED_RED_BLINK);
         }
         else if (serverTargetLed == "BLUE_ON") {
             setLedMode(LED_BLUE_ON);
@@ -395,7 +399,7 @@ void loop() {
             if (stateChanged || (millis() - previousSensorMillis >= SENSOR_POST_INTERVAL_MS)) {
                 sendSensorReport(sensorStateStr);
 
-                // 시리얼 모니터 출력 (로그 과다 출력 방지를 위해 보고 시점마다 출력)
+                // 시리얼 모니터 출력
                 Serial.print("무게: ");
                 Serial.print(reading);
                 Serial.print(" | 착석: ");
