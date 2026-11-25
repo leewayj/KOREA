@@ -24,29 +24,38 @@ const int BLUE_PIN = 27;
 HX711 scale;
 Ticker ledTicker; // HTTPS 통신 중에도 멈추지 않고 LED를 제어하는 독립 타이머
 
+// HTTPS 연결 재사용을 위한 전역 클라이언트 (SSL 핸드셰이크 지연 최소화)
+WiFiClientSecure secureClient;
+HTTPClient httpGet;
+HTTPClient httpPost;
+
 // 착석·비착석 임계값 (2L 생수병 약 200,000 시연 최적화)
-const long OCCUPIED_THRESHOLD = 180000; // 1.8kg 이상 -> 착석 판정 (2L 생수병 안정 인식)
+const long OCCUPIED_THRESHOLD = 180000; // 1.8kg 이상 -> 착석 판정
 const long EMPTY_THRESHOLD = 130000;    // 1.3kg 이하 -> 비착석 후보
 
 // 시연용 빠른 반응을 위한 이석 유예 시간 (1초)
-const unsigned long LEAVE_DEBOUNCE_MS = 1000; // 1초 이상 무게가 빠져야 실제 이석 인정
+const unsigned long LEAVE_DEBOUNCE_MS = 1000;
 
 // 의자 넘어짐(전도) 및 비정상 하중 감지 기준
-const long TILT_NEGATIVE_LIMIT = -120000;     // 이보다 큰 음수가 지속되면 의자 넘어짐/뒤틀림 판정
-const long OVERLOAD_LIMIT = 2000000;          // 비정상 과하중 한계
-const unsigned long ABNORMAL_HOLD_MS = 3000;  // 3초 이상 비정상 값 지속 시 전도/이상 판정
+const long TILT_NEGATIVE_LIMIT = -120000;
+const long OVERLOAD_LIMIT = 2000000;
+const unsigned long ABNORMAL_HOLD_MS = 3000;
 
-// 자동 영점(Auto-Tare) 설정 (5회 평균 필터링 + 빠른 반응 균형)
-const long AUTO_TARE_MAX_OFFSET = 120000;     // 빈 의자 위치 변화 오차 허용 상한
-const long AUTO_TARE_MIN_DRIFT = 20000;       // ±20,000 이상 영점이 틀어지면 재보정
-const long STABILITY_TOLERANCE = 10000;       // 5회 평균 적용 시 안정 허용 오차
-const unsigned long AUTO_TARE_WAIT_MS = 4000; // 안정 상태 4초 유지 시 자동 영점
+// 자동 영점(Auto-Tare) 설정
+const long AUTO_TARE_MAX_OFFSET = 120000;
+const long AUTO_TARE_MIN_DRIFT = 20000;
+const long STABILITY_TOLERANCE = 10000;
+const unsigned long AUTO_TARE_WAIT_MS = 4000;
 
 // 통신/센서 오류 판단 기준
 const unsigned long SERVER_TIMEOUT_MS = 15000;
 const unsigned long SENSOR_TIMEOUT_MS = 3000;
 
-// 빨간색 경고 점멸 주기 (초 단위, 0.2초 = 200ms)
+// 통신 주기 설정 (빠른 동기화 최적화)
+const unsigned long SERVER_GET_INTERVAL_MS = 700;  // 0.7초마다 서버 상태 조회
+const unsigned long SENSOR_POST_INTERVAL_MS = 1000; // 1초마다 정기 보고 (상태 변화 시 즉시 보고)
+
+// 빨간색 경고 점멸 주기 (0.2초 = 200ms)
 const float RED_BLINK_INTERVAL_SEC = 0.2;
 
 // LED 출력 모드 정의
@@ -64,6 +73,8 @@ volatile bool blinkState = false;
 String serverSeatStatus = "UNKNOWN";
 String serverTargetLed = "OFF";
 bool isOccupied = false;
+String lastReportedState = "";
+LedMode lastReportedLed = LED_OFF;
 
 // 오류 및 초기화 추적 변수
 bool hasServerSynced = false;
@@ -97,7 +108,6 @@ void setColor(int r, int g, int b) {
     analogWrite(BLUE_PIN, b);
 }
 
-// Ticker 타이머에 의해 0.2초마다 백그라운드에서 자동 호출되는 LED 제어 함수
 void onLedTimerTick() {
     switch (currentLedMode) {
         case LED_OFF:
@@ -146,7 +156,6 @@ void setup() {
     pinMode(BLUE_PIN, OUTPUT);
     setColor(0, 0, 0);
 
-    // 0.2초마다 독립적으로 LED 상태를 갱신하도록 타이머 시작
     ledTicker.attach(RED_BLINK_INTERVAL_SEC, onLedTimerTick);
 
     scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
@@ -175,8 +184,39 @@ void setup() {
     Serial.print("ESP32 IP 주소: ");
     Serial.println(WiFi.localIP());
 
+    // SSL 클라이언트 및 HTTP 연결 재사용 설정
+    secureClient.setInsecure();
+    httpGet.setReuse(true);
+    httpGet.setTimeout(5000);
+    httpPost.setReuse(true);
+    httpPost.setTimeout(5000);
+
     lastServerOkMillis = millis();
     lastSensorOkMillis = millis();
+}
+
+void sendSensorReport(String sensorStateStr) {
+    if (WiFi.status() != WL_CONNECTED) return;
+
+    httpPost.begin(secureClient, serverPostUrl);
+    httpPost.addHeader("Content-Type", "application/json");
+
+    JsonDocument postDoc;
+    postDoc["state"] = sensorStateStr;
+    postDoc["led_state"] = ledModeToString(currentLedMode);
+
+    String httpRequestData;
+    serializeJson(postDoc, httpRequestData);
+
+    int postCode = httpPost.POST(httpRequestData);
+    if (postCode != 200) {
+        Serial.printf(">>> 센서/LED 회신 POST 에러: HTTP %d\n", postCode);
+    }
+    httpPost.end();
+
+    lastReportedState = sensorStateStr;
+    lastReportedLed = currentLedMode;
+    previousSensorMillis = millis();
 }
 
 void loop() {
@@ -201,21 +241,16 @@ void loop() {
         }
     }
 
-    // 2. [서버 상태 조회] 2초마다 실행 (GET)
-    if (millis() - previousServerMillis >= 2000) {
+    // 2. [서버 상태 조회] 0.7초마다 실행 (GET)
+    if (millis() - previousServerMillis >= SERVER_GET_INTERVAL_MS) {
         previousServerMillis = millis();
 
         if (WiFi.status() == WL_CONNECTED) {
-            WiFiClientSecure client;
-            client.setInsecure();
-
-            HTTPClient http;
-            http.setTimeout(10000);
-            http.begin(client, serverGetUrl);
-            int httpResponseCode = http.GET();
+            httpGet.begin(secureClient, serverGetUrl);
+            int httpResponseCode = httpGet.GET();
 
             if (httpResponseCode == 200) {
-                String payload = http.getString();
+                String payload = httpGet.getString();
                 JsonDocument doc;
                 DeserializationError error = deserializeJson(doc, payload);
 
@@ -240,7 +275,7 @@ void loop() {
             } else {
                 Serial.printf(">>> 서버 GET 에러 코드: HTTP %d\n", httpResponseCode);
             }
-            http.end();
+            httpGet.end();
         }
 
         if (millis() - lastServerOkMillis > SERVER_TIMEOUT_MS) {
@@ -248,9 +283,10 @@ void loop() {
         }
     }
 
-    // 3. [무게 측정 + 들썩임 필터 + 의자 넘어짐 감지 + 자동 영점] 1초마다 실행 (POST)
-    if (millis() - previousSensorMillis >= 1000) {
-        previousSensorMillis = millis();
+    // 3. [무게 측정 + 상태 판정] 0.5초마다 빠르게 측정하되, 변경 시 즉시 POST 전송
+    static unsigned long lastMeasureMillis = 0;
+    if (millis() - lastMeasureMillis >= 500) {
+        lastMeasureMillis = millis();
         long reading = 0;
 
         if (scale.is_ready()) {
@@ -348,42 +384,27 @@ void loop() {
             setLedMode(LED_OFF);
         }
 
-        // [E] 서버로 센서/LED 상태 회신
-        if (WiFi.status() == WL_CONNECTED && (hasValidSensor || isSensorError)) {
-            WiFiClientSecure client;
-            client.setInsecure();
-
-            HTTPClient http;
-            http.setTimeout(10000);
-            http.begin(client, serverPostUrl);
-            http.addHeader("Content-Type", "application/json");
-
+        // [E] 상태가 바뀌었거나 1초 정기 보고 주기가 되었을 때 즉시 서버로 회신
+        if (hasValidSensor || isSensorError) {
             String sensorStateStr = (isSensorError || isChairFallen)
                 ? "SENSOR_ERROR"
                 : (isOccupied ? "OCCUPIED" : "EMPTY");
 
-            JsonDocument postDoc;
-            postDoc["state"] = sensorStateStr;
-            postDoc["led_state"] = ledModeToString(currentLedMode);
+            bool stateChanged = (sensorStateStr != lastReportedState) || (currentLedMode != lastReportedLed);
 
-            String httpRequestData;
-            serializeJson(postDoc, httpRequestData);
+            if (stateChanged || (millis() - previousSensorMillis >= SENSOR_POST_INTERVAL_MS)) {
+                sendSensorReport(sensorStateStr);
 
-            int postCode = http.POST(httpRequestData);
-            if (postCode != 200) {
-                Serial.printf(">>> 센서/LED 회신 POST 에러: HTTP %d\n", postCode);
+                // 시리얼 모니터 출력 (로그 과다 출력 방지를 위해 보고 시점마다 출력)
+                Serial.print("무게: ");
+                Serial.print(reading);
+                Serial.print(" | 착석: ");
+                Serial.print(isChairFallen ? "FALLEN(전도)" : (isOccupied ? "OCCUPIED" : "EMPTY"));
+                Serial.print(" | 서버상태: ");
+                Serial.print(displayStatus);
+                Serial.print(" | 적용LED: ");
+                Serial.println(ledModeToString(currentLedMode));
             }
-            http.end();
         }
-
-        // 시리얼 모니터 출력
-        Serial.print("무게: ");
-        Serial.print(reading);
-        Serial.print(" | 착석: ");
-        Serial.print(isChairFallen ? "FALLEN(전도)" : (isOccupied ? "OCCUPIED" : "EMPTY"));
-        Serial.print(" | 서버상태: ");
-        Serial.print(displayStatus);
-        Serial.print(" | 적용LED: ");
-        Serial.println(ledModeToString(currentLedMode));
     }
 }
