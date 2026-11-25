@@ -4,7 +4,7 @@ import SeatPage from './components/SeatPage'
 import ReservationPage from './components/ReservationPage'
 import ReturnSeatDialog from './components/ReturnSeatDialog'
 import ExpiredReservationPage from './components/ExpiredReservationPage'
-import { createPreviewReservation, readPreviewReservation, savePreviewReservation, isReservationActive, canChangeSeat, changeReservationSeat, extendReservation, createReservationFixture, expirationWarningMs, isReservationEndingSoon, formatDuration } from './data/reservation'
+import { createPreviewReservation, readPreviewReservation, savePreviewReservation, isReservationActive, canChangeSeat, changeReservationSeat, extendReservation, createReservationFixture, reservationDuration, expirationWarningMs, isReservationEndingSoon, formatDuration } from './data/reservation'
 import { rooms as previewRooms } from './data/rooms'
 import { reservationApiEnabled, fetchSeats, fetchSeat, fetchMyReservation, reserveApiSeat, moveApiReservation, extendApiReservation, endApiReservation } from './data/reservationApi'
 import { session } from './api'
@@ -182,7 +182,7 @@ function App({ accountControl }) {
     }
     const send = activeReservation
       ? () => moveApiReservation(activeReservation.id, seat.seat_id)
-      : () => reserveApiSeat(seat.seat_id)
+      : () => reserveApiSeat(seat.seat_id, reservationDuration / 1000)
     return updateApiReservation(send, (saved) => {
       setReservation(toWebReservation(saved, seat))
       navigate('reservation')
